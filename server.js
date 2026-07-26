@@ -1,5 +1,5 @@
 import { Server, Origins } from 'boardgame.io/dist/cjs/server.js';
-import { GiocoCarte } from './src/Game.js'; // Assicurati che l'estensione .js ci sia!
+import { GiocoCarte } from './src/Game.js';
 
 const server = Server({
   games: [GiocoCarte],
@@ -8,12 +8,13 @@ const server = Server({
     'http://localhost:3000',
     'http://localhost:5173',
     Origins.LOCALHOST,
-    '*'
+    '*',
   ],
 });
 
 const PORT = process.env.PORT || 8000;
 
-server.run(PORT, () => {
+// Per abilitare le chiamate REST (join, create, ecc.) e la gestione della Lobby
+server.run({ port: PORT }, () => {
   console.log(`Server attivo sulla porta ${PORT}`);
 });
