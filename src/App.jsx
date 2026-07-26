@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
-import { LobbyClient } from 'boardgame.io/client';
 import { GiocoCarte } from './Game';
 
 const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
-const lobbyClient = new LobbyClient({ server: SERVER_URL });
 
 function TavoloDaGioco({ G, ctx, moves, playerID }) {
   if (!G || !ctx) {
@@ -16,6 +14,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
+  const nomeGiocatore = localStorage.getItem('playerName') || `Giocatore ${Number(playerID) + 1}`;
   const eMioTurno = ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
@@ -24,7 +23,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     return (
       <div style={styles.container}>
         <div style={styles.cardInfo}>
-          <h2>Fase di Dichiarazione - Posto {Number(playerID) + 1}</h2>
+          <h2>Fase di Dichiarazione - {nomeGiocatore} (Posto {Number(playerID) + 1})</h2>
           <p><strong>Round:</strong> {G.roundCorrente} / 13</p>
           <p><strong>Briscola:</strong> <span style={{ fontSize: '24px' }}>{G.briscola}</span></p>
         </div>
@@ -76,7 +75,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
           <p>Briscola: <strong style={{ fontSize: '20px' }}>{G.briscola}</strong></p>
         </div>
         <div>
-          <p>Sei il Giocatore: <strong>Posto {Number(playerID) + 1}</strong></p>
+          <p>Ciao <strong>{nomeGiocatore}</strong> (Posto {Number(playerID) + 1})</p>
           <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
             {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno del Giocatore ${Number(ctx.currentPlayer) + 1}`}
           </p>
@@ -127,71 +126,31 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
   );
 }
 
+const GiocoClient = Client({
+  game: GiocoCarte,
+  board: TavoloDaGioco,
+  multiplayer: SocketIO({ server: SERVER_URL }),
+  debug: false,
+});
+
 export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [session, setSession] = useState(null);
-  const [caricamento, setCaricamento] = useState(false);
-  const [errore, setErrore] = useState('');
+  const [playerID, setPlayerID] = useState('0');
+  const [inGioco, setInGioco] = useState(false);
 
-  const gestisciIngresso = async (e) => {
+  const gestisciIngresso = (e) => {
     e.preventDefault();
     if (!nome.trim()) return;
 
-    setCaricamento(true);
-    setErrore('');
-
-    try {
-      // 1. Prova a creare la partita su Render (se non esiste già)
-      try {
-        await lobbyClient.createMatch('gioco-carte-4p', {
-          numPlayers: 4,
-          setupData: {},
-          matchID: matchID
-        });
-      } catch (err) {
-        // Se esiste già va bene, proseguiamo col join
-      }
-
-      // 2. Ottieni lo stato della partita per trovare il primo posto libero
-      const match = await lobbyClient.getMatch('gioco-carte-4p', matchID);
-      let freeSeat = match.players.find(p => p.name === nome.trim());
-      let playerID = freeSeat ? String(freeSeat.id) : null;
-      let playerCredentials = freeSeat ? freeSeat.credentials : null;
-
-      if (!playerID) {
-        const availableSeat = match.players.find(p => !p.name);
-        if (!availableSeat) {
-          throw new Error('Il tavolo è pieno (massimo 4 giocatori)!');
-        }
-        playerID = String(availableSeat.id);
-
-        // 3. Unisciti alla partita
-        const res = await lobbyClient.joinMatch('gioco-carte-4p', matchID, {
-          playerID: playerID,
-          playerName: nome.trim()
-        });
-        playerCredentials = res.playerCredentials;
-      }
-
-      setSession({
-        playerID,
-        credentials: playerCredentials
-      });
-    } catch (err) {
-      console.error(err);
-      setErrore('Impossibile connettersi al server. Riprova tra qualche secondo.');
-    } finally {
-      setCaricamento(false);
-    }
+    localStorage.setItem('playerName', nome.trim());
+    setInGioco(true);
   };
 
-  if (!session) {
+  if (!inGioco) {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
-
-        {errore && <div style={styles.alertError}>{errore}</div>}
 
         <form onSubmit={gestisciIngresso} style={styles.formLogin}>
           <div style={{ marginBottom: '15px' }}>
@@ -206,7 +165,7 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '15px' }}>
             <label>Codice Stanza / Tavolo:</label>
             <input
               type="text"
@@ -217,28 +176,29 @@ export default function App() {
             />
           </div>
 
-          <button type="submit" disabled={caricamento} style={styles.btnSubmit}>
-            {caricamento ? 'Connessione in corso...' : 'Entra nel Tavolo'}
+          <div style={{ marginBottom: '20px' }}>
+            <label>Posizione al Tavolo:</label>
+            <select
+              value={playerID}
+              onChange={(e) => setPlayerID(e.target.value)}
+              style={styles.input}
+            >
+              <option value="0">Giocatore 1 (Posto 0)</option>
+              <option value="1">Giocatore 2 (Posto 1)</option>
+              <option value="2">Giocatore 3 (Posto 2)</option>
+              <option value="3">Giocatore 4 (Posto 3)</option>
+            </select>
+          </div>
+
+          <button type="submit" style={styles.btnSubmit}>
+            Entra nel Tavolo
           </button>
         </form>
       </div>
     );
   }
 
-  const GiocoClient = Client({
-    game: GiocoCarte,
-    board: TavoloDaGioco,
-    multiplayer: SocketIO({ server: SERVER_URL }),
-    debug: false,
-  });
-
-  return (
-    <GiocoClient
-      matchID={matchID}
-      playerID={session.playerID}
-      credentials={session.credentials}
-    />
-  );
+  return <GiocoClient matchID={matchID} playerID={playerID} />;
 }
 
 const styles = {
@@ -248,7 +208,6 @@ const styles = {
   formLogin: { display: 'flex', flexDirection: 'column', textAlign: 'left' },
   input: { width: '100%', padding: '12px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' },
   btnSubmit: { padding: '14px', backgroundColor: '#2e7d32', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' },
-  alertError: { backgroundColor: '#ffebee', color: '#c62828', padding: '10px', borderRadius: '6px', marginBottom: '15px', fontSize: '14px' },
   header: { display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #ccc', paddingBottom: '10px' },
   cardInfo: { backgroundColor: '#f5f5f5', padding: '15px', borderRadius: '8px', marginBottom: '15px' },
   manoContainer: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
