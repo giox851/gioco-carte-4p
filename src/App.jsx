@@ -22,7 +22,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
     );
   }
 
-  const eMioTurno = ctx.currentPlayer === playerID;
+  const eMioTurno = ctx.phase === 'dichiarazione' ? true : ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
 
@@ -65,21 +65,18 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
         ) : (
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <h3>Quante prese pensi di fare?</h3>
-            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${getNomePosto(ctx.currentPlayer)}...`}</p>
 
-            {eMioTurno && (
-              <div style={styles.grigliaPulsanti}>
-                {Array.from({ length: (G.totaleMani || 0) + 1 }, (_, i) => i).map(num => (
-                  <button
-                    key={num}
-                    style={styles.btnDichiarazione}
-                    onClick={() => moves.faiDichiarazione(num)}
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div style={styles.grigliaPulsanti}>
+              {Array.from({ length: (G.totaleMani || 0) + 1 }, (_, i) => i).map(num => (
+                <button
+                  key={num}
+                  style={styles.btnDichiarazione}
+                  onClick={() => moves.faiDichiarazione(num)}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

@@ -1,3 +1,5 @@
+import { ActivePlayers } from 'boardgame.io/core';
+
 // Helper per generare e mescolare un mazzo di 40 carte
 function creaMazzo() {
   const semi = ['Bastoni', 'Coppe', 'Denari', 'Spade'];
@@ -54,18 +56,22 @@ export const GiocoCarte = {
   }),
 
   moves: {
-    registraGiocatore: (G, ctx, { playerID, name }) => {
-      if (!G.nomiGiocatori) {
-        G.nomiGiocatori = {};
-      }
-      if (name && name.trim() !== '') {
-        G.nomiGiocatori[playerID] = name.trim();
-      }
+    // Permette di registrare il nome in qualsiasi momento
+    registraGiocatore: {
+      move: (G, ctx, { playerID, name }) => {
+        if (!G.nomiGiocatori) {
+          G.nomiGiocatori = {};
+        }
+        if (name && name.trim() !== '') {
+          G.nomiGiocatori[playerID] = name.trim();
+        }
+      },
+      noLimit: true, // Consente l'esecuzione anche se non è il proprio turno
     },
 
     faiDichiarazione: (G, ctx, numeroPrese) => {
       if (!G.declarations) G.declarations = {};
-      G.declarations[ctx.currentPlayer] = numeroPrese;
+      G.declarations[ctx.playerID || ctx.currentPlayer] = numeroPrese;
     },
 
     giocaCarta: (G, ctx, cartaIndex) => {
@@ -88,12 +94,14 @@ export const GiocoCarte = {
   phases: {
     dichiarazione: {
       start: true,
+      // Tutti i giocatori sono attivi contemporaneamente durante le dichiarazioni
+      turn: {
+        activePlayers: ActivePlayers.ALL,
+      },
       onBegin: (G, ctx) => {
         G.tavolo = [];
         G.declarations = {};
         G.prese = { 0: 0, 1: 0, 2: 0, 3: 0 };
-
-        // Inizializzazione esplicita per prevenire TypeError
         G.hands = { 0: [], 1: [], 2: [], 3: [] };
 
         const mazzo = creaMazzo();
@@ -108,7 +116,6 @@ export const GiocoCarte = {
         G.briscola = cartaBriscola ? cartaBriscola.seme : 'Bastoni';
       },
       endIf: (G) => {
-        // Controllo difensivo per evitare crash all'avvio
         if (!G || !G.declarations) return false;
         return Object.keys(G.declarations).length === 4;
       },
