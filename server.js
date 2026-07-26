@@ -1,5 +1,5 @@
-import { Server, Origins } from 'boardgame.io/server';
-import { GiocoCarte } from './src/Game.js'; // Assicurati di includere l'estensione .js
+import { Server, Origins } from 'boardgame.io/dist/cjs/server.js';
+import { GiocoCarte } from './src/Game.js'; // Assicurati che l'estensione .js ci sia!
 
 const server = Server({
   games: [GiocoCarte],
