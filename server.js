@@ -1,9 +1,15 @@
 const { Server, Origins } = require('boardgame.io/server');
-const { GiocoCarte } = require('./src/Game'); // Assicurati che il percorso del file Game sia corretto
+const { GiocoCarte } = require('./src/Game'); // controlla il percorso del file Game
 
 const server = Server({
   games: [GiocoCarte],
-  origins: [Origins.LOCALHOST, '*'],
+  origins: [
+    'https://gioco-carte-4p.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    Origins.LOCALHOST,
+    '*' // Permette tutte le origini per evitare blocchi CORS sulle API Lobby
+  ],
 });
 
 const PORT = process.env.PORT || 8000;

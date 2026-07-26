@@ -8,7 +8,6 @@ const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
   const [listaGiocatori, setListaGiocatori] = useState([]);
 
-  // Polling leggero/sync per leggere gli iscritti ufficiali al tavolo dal server REST
   useEffect(() => {
     const caricaStatoTavolo = async () => {
       try {
@@ -23,7 +22,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
     };
 
     caricaStatoTavolo();
-    const interval = setInterval(caricaStatoTavolo, 2000); // Aggiorna ogni 2 secondi durante l'attesa
+    const interval = setInterval(caricaStatoTavolo, 3000);
     return () => clearInterval(interval);
   }, [matchID]);
 
@@ -35,7 +34,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
     );
   }
 
-  // Calcoliamo i posti occupati dagli utenti reali
   const connessi = listaGiocatori.filter(p => p.name);
   const numConnessi = connessi.length;
 
@@ -43,7 +41,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
 
-  // SALA D'ATTESA (Meno di 4 giocatori)
   if (numConnessi < 4) {
     return (
       <div style={styles.container}>
@@ -77,7 +74,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
     );
   }
 
-  // FASE DICHIARAZIONE
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
@@ -127,7 +123,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
     );
   }
 
-  // FASE GIOCO MANI
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -214,8 +209,22 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [errore, setErrore] = useState('');
   const [caricamento, setCaricamento] = useState(false);
+  const [statoServer, setStatoServer] = useState('Verifica server...');
 
-  // INGRESSO AUTOMATICO
+  // Funzione per effettuare fetch con timeout esteso (evita fallimenti quando Render si sta svegliando)
+  const fetchConTimeout = async (url, options = {}, timeoutMs = 20000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (err) {
+      clearTimeout(id);
+      throw err;
+    }
+  };
+
   const gestisciIngresso = async (e) => {
     e.preventDefault();
     setErrore('');
@@ -226,24 +235,32 @@ export default function App() {
     }
 
     setCaricamento(true);
+    setStatoServer('Connessione al server in corso (può richiedere 30s se in standby)...');
 
     try {
-      // 1. Controlla se la stanza esiste, altrimenti creala
-      let matchRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
-      
+      // 1. Controlla / Crea la stanza con timeout lungo
+      let matchRes;
+      try {
+        matchRes = await fetchConTimeout(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+      } catch (err) {
+        // Se va in timeout, riprova una seconda volta (ora che il server si è risvegliato)
+        setStatoServer('Avvio del server Render in corso, riprovo...');
+        matchRes = await fetchConTimeout(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+      }
+
       if (matchRes.status === 404) {
-        await fetch(`${SERVER_URL}/games/gioco-carte-4p/create`, {
+        await fetchConTimeout(`${SERVER_URL}/games/gioco-carte-4p/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ numPlayers: 4, setupData: {}, matchID: matchID }),
         });
-        matchRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+        matchRes = await fetchConTimeout(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
       }
 
       const matchData = await matchRes.json();
       const players = matchData.players || {};
 
-      // 2. Trova il primo posto vuoto (Senza nome associato)
+      // 2. Trova il primo posto vuoto
       const postoLibero = Object.keys(players).find(id => !players[id].name);
 
       if (postoLibero === undefined) {
@@ -252,8 +269,8 @@ export default function App() {
         return;
       }
 
-      // 3. Unisciti tramite API al posto trovato
-      const joinRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}/join`, {
+      // 3. Registrazione posto
+      const joinRes = await fetchConTimeout(`${SERVER_URL}/games/gioco-carte-4p/${matchID}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -269,12 +286,13 @@ export default function App() {
           credentials: joinData.playerCredentials,
         });
       } else {
-        setErrore('Errore di registrazione al tavolo. Riprova.');
+        setErrore('Errore durante la registrazione al tavolo. Riprova.');
       }
     } catch (err) {
-      setErrore('Impossibile contattare il server Render.');
+      setErrore('Il server Render sta ancora rispondendo in ritardo o è offline. Clicca nuovamente su "Entra nel Tavolo".');
     } finally {
       setCaricamento(false);
+      setStatoServer('');
     }
   };
 
@@ -284,6 +302,7 @@ export default function App() {
         <h2>Entra al Tavolo da Gioco</h2>
 
         {errore && <div style={styles.alertError}>{errore}</div>}
+        {caricamento && <div style={styles.alertInfo}>{statoServer}</div>}
 
         <form onSubmit={gestisciIngresso} style={styles.formLogin}>
           <div style={{ marginBottom: '15px' }}>
@@ -310,7 +329,7 @@ export default function App() {
           </div>
 
           <button type="submit" disabled={caricamento} style={styles.btnSubmit}>
-            {caricamento ? 'Trovo un posto libero...' : 'Entra nel Tavolo'}
+            {caricamento ? 'Connessione...' : 'Entra nel Tavolo'}
           </button>
         </form>
       </div>
@@ -345,6 +364,7 @@ const styles = {
   btnDichiarazione: { padding: '10px 15px', fontSize: '16px', backgroundColor: '#1976d2', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
   alertSuccess: { backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '15px', borderRadius: '6px', textAlign: 'center', marginTop: '20px' },
   alertError: { backgroundColor: '#ffebee', color: '#c62828', padding: '10px', borderRadius: '6px', marginBottom: '15px', fontSize: '14px' },
+  alertInfo: { backgroundColor: '#e3f2fd', color: '#0d47a1', padding: '10px', borderRadius: '6px', marginBottom: '15px', fontSize: '13px' },
   tabellaPunti: { margin: '20px 0', backgroundColor: '#fafafa', padding: '10px', borderRadius: '8px' },
   tavoloVerde: { backgroundColor: '#357a38', color: '#fff', padding: '20px', borderRadius: '12px', minHeight: '150px', textAlign: 'center', margin: '20px 0' },
   carteSulTavolo: { display: 'flex', gap: '15px', justifyContent: 'center', marginTop: '10px' },
