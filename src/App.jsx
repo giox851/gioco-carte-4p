@@ -126,28 +126,34 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
   );
 }
 
-const GiocoClient = Client({
-  game: GiocoCarte,
-  board: TavoloDaGioco,
-  multiplayer: SocketIO({ server: SERVER_URL }),
-  debug: false,
-});
-
 export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [playerID, setPlayerID] = useState('0');
-  const [inGioco, setInGioco] = useState(false);
+  const [session, setSession] = useState(null);
 
   const gestisciIngresso = (e) => {
     e.preventDefault();
     if (!nome.trim()) return;
 
     localStorage.setItem('playerName', nome.trim());
-    setInGioco(true);
+
+    // Assegnazione automatica del posto basata sul matchID memorizzato localmente o progressivo
+    const key = `seat_${matchID}_${nome.trim()}`;
+    let savedSeat = localStorage.getItem(key);
+
+    if (!savedSeat) {
+      // Se è un nuovo utente su questa scheda/browser, prende il posto successivo
+      const existingSeats = Object.keys(localStorage).filter(k => k.startsWith(`seat_${matchID}_`));
+      savedSeat = String(existingSeats.length % 4);
+      localStorage.setItem(key, savedSeat);
+    }
+
+    setSession({
+      playerID: savedSeat
+    });
   };
 
-  if (!inGioco) {
+  if (!session) {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
@@ -165,7 +171,7 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
+          <div style={{ marginBottom: '20px' }}>
             <label>Codice Stanza / Tavolo:</label>
             <input
               type="text"
@@ -176,20 +182,6 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label>Posizione al Tavolo:</label>
-            <select
-              value={playerID}
-              onChange={(e) => setPlayerID(e.target.value)}
-              style={styles.input}
-            >
-              <option value="0">Giocatore 1 (Posto 0)</option>
-              <option value="1">Giocatore 2 (Posto 1)</option>
-              <option value="2">Giocatore 3 (Posto 2)</option>
-              <option value="3">Giocatore 4 (Posto 3)</option>
-            </select>
-          </div>
-
           <button type="submit" style={styles.btnSubmit}>
             Entra nel Tavolo
           </button>
@@ -198,7 +190,14 @@ export default function App() {
     );
   }
 
-  return <GiocoClient matchID={matchID} playerID={playerID} />;
+  const GiocoClient = Client({
+    game: GiocoCarte,
+    board: TavoloDaGioco,
+    multiplayer: SocketIO({ server: SERVER_URL }),
+    debug: false,
+  });
+
+  return <GiocoClient matchID={matchID} playerID={session.playerID} />;
 }
 
 const styles = {
