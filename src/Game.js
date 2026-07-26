@@ -93,8 +93,11 @@ export const GiocoCarte = {
         G.declarations = {};
         G.prese = { 0: 0, 1: 0, 2: 0, 3: 0 };
 
+        // Inizializzazione esplicita per prevenire TypeError
+        G.hands = { 0: [], 1: [], 2: [], 3: [] };
+
         const mazzo = creaMazzo();
-        const cartePerGiocatore = Math.min(11 - G.roundCorrente, 10);
+        const cartePerGiocatore = Math.min(11 - (G.roundCorrente || 1), 10);
         G.totaleMani = cartePerGiocatore;
 
         for (let i = 0; i < 4; i++) {
@@ -105,7 +108,7 @@ export const GiocoCarte = {
         G.briscola = cartaBriscola ? cartaBriscola.seme : 'Bastoni';
       },
       endIf: (G) => {
-        // Controllo difensivo per evitare crash se G.declarations non è definito
+        // Controllo difensivo per evitare crash all'avvio
         if (!G || !G.declarations) return false;
         return Object.keys(G.declarations).length === 4;
       },
