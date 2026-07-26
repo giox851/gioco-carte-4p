@@ -48,7 +48,6 @@ function assegnaCartaSpettante(G, ctx) {
 }
 
 function calcolaVincitorePresa(tavolo, briscola) {
-  const cartaIniziale = tavolo[0].carta;
   let vincitore = tavolo[0];
 
   for (let i = 1; i < tavolo.length; i++) {
@@ -82,64 +81,68 @@ export const GiocoCarte = {
       punti: { '0': 0, '1': 0, '2': 0, '3': 0 },
       tavolo: [],
       ultimoVincitore: null,
+      giocatori: { '0': null, '1': null, '2': null, '3': null },
     };
 
     assegnaCartaSpettante(G, ctx);
     return G;
   },
 
+  moves: {
+    entraAlTavolo: ({ G, playerID }, nome) => {
+      if (G.giocatori[playerID] === null && nome) {
+        G.giocatori[playerID] = nome.trim();
+      }
+    },
+    faiDichiarazione: ({ G, ctx, playerID }, valore) => {
+      G.declarations[playerID] = valore;
+      if (Object.keys(G.declarations).length === 4) {
+        ctx.events.endPhase();
+      } else {
+        ctx.events.endTurn();
+      }
+    },
+    giocaCarta: ({ G, ctx, playerID }, cartaIndex) => {
+      const cartaGiocata = G.hands[playerID].splice(cartaIndex, 1)[0];
+      G.tavolo.push({ player: playerID, carta: cartaGiocata });
+
+      if (G.tavolo.length === 4) {
+        const vincitoreID = calcolaVincitorePresa(G.tavolo, G.briscola);
+        G.prese[vincitoreID] += 1;
+        G.ultimoVincitore = vincitoreID;
+
+        if (G.manoCorrente < G.totaleMani) {
+          G.manoCorrente += 1;
+          G.tavolo = [];
+          ctx.events.endTurn({ next: vincitoreID });
+        } else {
+          ['0', '1', '2', '3'].forEach(pID => {
+            const dich = G.declarations[pID];
+            const preseFatte = G.prese[pID];
+            if (dich === preseFatte) {
+              G.punti[pID] += 10 + dich;
+            }
+          });
+
+          if (G.roundCorrente < 13) {
+            G.roundCorrente += 1;
+            assegnaCartaSpettante(G, ctx);
+            ctx.events.setPhase('dichiarazione');
+          } else {
+            ctx.events.endGame();
+          }
+        }
+      } else {
+        ctx.events.endTurn();
+      }
+    }
+  },
+
   phases: {
     dichiarazione: {
       start: true,
-      moves: {
-        faiDichiarazione: ({ G, ctx, playerID }, valore) => {
-          G.declarations[playerID] = valore;
-          if (Object.keys(G.declarations).length === 4) {
-            ctx.events.endPhase();
-          } else {
-            ctx.events.endTurn();
-          }
-        }
-      },
       next: 'giocoMani'
     },
-    giocoMani: {
-      moves: {
-        giocaCarta: ({ G, ctx, playerID }, cartaIndex) => {
-          const cartaGiocata = G.hands[playerID].splice(cartaIndex, 1)[0];
-          G.tavolo.push({ player: playerID, carta: cartaGiocata });
-
-          if (G.tavolo.length === 4) {
-            const vincitoreID = calcolaVincitorePresa(G.tavolo, G.briscola);
-            G.prese[vincitoreID] += 1;
-            G.ultimoVincitore = vincitoreID;
-
-            if (G.manoCorrente < G.totaleMani) {
-              G.manoCorrente += 1;
-              G.tavolo = [];
-              ctx.events.endTurn({ next: vincitoreID });
-            } else {
-              ['0', '1', '2', '3'].forEach(pID => {
-                const dich = G.declarations[pID];
-                const preseFatte = G.prese[pID];
-                if (dich === preseFatte) {
-                  G.punti[pID] += 10 + dich;
-                }
-              });
-
-              if (G.roundCorrente < 13) {
-                G.roundCorrente += 1;
-                assegnaCartaSpettante(G, ctx);
-                ctx.events.setPhase('dichiarazione');
-              } else {
-                ctx.events.endGame();
-              }
-            }
-          } else {
-            ctx.events.endTurn();
-          }
-        }
-      }
-    }
+    giocoMani: {}
   }
 };
