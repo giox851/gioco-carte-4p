@@ -3,15 +3,21 @@ import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { GiocoCarte } from './Game';
 
-//  server Render
 const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 
 function TavoloDaGioco({ G, ctx, moves, playerID }) {
+  const mioNome = localStorage.getItem('mio_nome_giocatore') || `Giocatore ${playerID}`;
+
+  useEffect(() => {
+    if (moves && moves.registraGiocatore) {
+      moves.registraGiocatore(mioNome);
+    }
+  }, [moves, mioNome]);
+
   if (!G || !ctx) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'Arial' }}>
+      <div style={styles.centerContainer}>
         <h3>Connessione al server in corso...</h3>
-        <p>Assicurati che il server Node.js sia avviato sulla porta 8000.</p>
       </div>
     );
   }
@@ -19,15 +25,41 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
   const eMioTurno = ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
+  const numGiocatoriConnessi = Object.values(G.nomiGiocatori || {}).filter(n => n !== null).length;
 
-  useEffect(() => {
-    const nomeSalvato = localStorage.getItem(`nome_giocatore_${playerID}`);
-    if (nomeSalvato && moves && moves.impostaNome) {
-      moves.impostaNome(nomeSalvato);
-    }
-  }, [playerID, moves]);
+  // SGUARDO SALA D'ATTESA: se ci sono meno di 4 giocatori
+  if (numGiocatoriConnessi < 4) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.waitingCard}>
+          <h2>⏳ In attesa dei giocatori...</h2>
+          <p style={{ fontSize: '18px' }}>
+            Giocatori collegati al tavolo: <strong>{numGiocatoriConnessi} / 4</strong>
+          </p>
+          
+          <div style={styles.gridPosti}>
+            {['0', '1', '2', '3'].map((pID) => {
+              const nomeG = G.nomiGiocatori?.[pID];
+              const eMe = pID === playerID;
+              return (
+                <div key={pID} style={{ ...styles.slotPosto, borderColor: nomeG ? '#2e7d32' : '#ccc' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Posto {Number(pID) + 1}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '5px' }}>
+                    {nomeG ? nomeG + (eMe ? ' (Tu)' : '') : '🪑 In attesa...'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ marginTop: '20px', color: '#666' }}>
+            La partita inizierà automaticamente non appena si collegherà il 4° giocatore.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  // Fase di Dichiarazione
+  // FASE 1: DICHIARAZIONE (Solo quando tutti e 4 sono al tavolo)
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
@@ -51,12 +83,12 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
 
         {dichFatta ? (
           <div style={styles.alertSuccess}>
-            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri giocatori...
+            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa delle dichiarazioni altrui...
           </div>
         ) : (
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <h3>Quante prese pensi di fare?</h3>
-            <p>{eMioTurno ? 'È il tuo turno di dichiarare!' : `In attesa del Giocatore ${G.nomiGiocatori?.[ctx.currentPlayer] || ctx.currentPlayer}...`}</p>
+            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${G.nomiGiocatori?.[ctx.currentPlayer] || 'un altro giocatore'}...`}</p>
             
             {eMioTurno && (
               <div style={styles.grigliaPulsanti}>
@@ -77,7 +109,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
-  // Fase Gioco Mani
+  // FASE 2: GIOCO MANI
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -86,7 +118,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
           <p>Briscola: <strong style={{ fontSize: '20px' }}>{G.briscola}</strong></p>
         </div>
         <div>
-          <p>Mio Nome: <strong>{G.nomiGiocatori?.[playerID] || playerID}</strong> (Posto {playerID})</p>
+          <p>Mio Nome: <strong>{G.nomiGiocatori?.[playerID]}</strong></p>
           <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
             {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${G.nomiGiocatori?.[ctx.currentPlayer] || ctx.currentPlayer}`}
           </p>
@@ -159,45 +191,77 @@ const GiocoClient = Client({
 });
 
 export default function App() {
-  const [nome, setNome] = useState('Giox');
+  const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [playerID, setPlayerID] = useState('0');
-  const [inPartita, setInPartita] = useState(false);
+  const [playerID, setPlayerID] = useState(null);
+  const [errore, setErrore] = useState('');
+  const [caricamento, setCaricamento] = useState(false);
 
-  const gestisciEntrata = (e) => {
+  // ASSEGNAZIONE AUTOMATICA DEL POSTO
+  const gestisciIngressoAutomatico = async (e) => {
     e.preventDefault();
+    setErrore('');
+
     if (!nome.trim()) {
-      alert('Inserisci il tuo nome!');
-      return;
-    }
-    if (playerID === '') {
-      alert('Seleziona un posto!');
+      setErrore('Inserisci un nome valido!');
       return;
     }
 
-    localStorage.setItem(`nome_giocatore_${playerID}`, nome.trim());
-    setInPartita(true);
+    setCaricamento(true);
+
+    try {
+      // Interroghiamo il server per scoprire lo stato dei posti disponibili
+      const response = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+      
+      if (response.ok) {
+        const matchData = await response.json();
+        const players = matchData.players;
+
+        // Troviamo il primo posto libero (dove non c'è un nome o un id utente registrato)
+        const postoLibero = Object.keys(players).find(id => !players[id].name);
+
+        if (postoLibero !== undefined) {
+          localStorage.setItem('mio_nome_giocatore', nome.trim());
+          setPlayerID(postoLibero);
+        } else {
+          setErrore('❌ Questo tavolo è già al completo (4/4 giocatori)! Cerca o crea un altro tavolo.');
+        }
+      } else {
+        // Se la stanza non esiste ancora sul server, entriamo come primo giocatore (Posto 0)
+        localStorage.setItem('mio_nome_giocatore', nome.trim());
+        setPlayerID('0');
+      }
+    } catch (err) {
+      // Fallback in caso di prima connessione
+      localStorage.setItem('mio_nome_giocatore', nome.trim());
+      setPlayerID('0');
+    } finally {
+      setCaricamento(false);
+    }
   };
 
-  if (!inPartita) {
+  if (playerID === null) {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
-        <form onSubmit={gestisciEntrata} style={styles.formLogin}>
+        
+        {errore && <div style={styles.alertError}>{errore}</div>}
+
+        <form onSubmit={gestisciIngressoAutomatico} style={styles.formLogin}>
           <div style={{ marginBottom: '15px' }}>
             <label>Il tuo Nome:</label>
             <input
               type="text"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              placeholder="Inserisci il tuo nome"
+              placeholder="digita qui il tuo nome"
               style={styles.input}
               required
             />
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
-            <label>Codice Stanza:</label>
+          <div style={{ marginBottom: '20px' }}>
+            <label>Codice Stanza / Tavolo:</label>
             <input
               type="text"
               value={matchID}
@@ -207,23 +271,8 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label>Scegli il tuo Posto:</label>
-            <select
-              value={playerID}
-              onChange={(e) => setPlayerID(e.target.value)}
-              style={styles.input}
-              required
-            >
-              <option value="0">Posto 0 (Giocatore 1)</option>
-              <option value="1">Posto 1 (Giocatore 2)</option>
-              <option value="2">Posto 2 (Giocatore 3)</option>
-              <option value="3">Posto 3 (Giocatore 4)</option>
-            </select>
-          </div>
-
-          <button type="submit" style={styles.btnSubmit}>
-            Entra in Partita
+          <button type="submit" disabled={caricamento} style={styles.btnSubmit}>
+            {caricamento ? 'Ricerca posto disponibile...' : 'Trova Posto e Entra'}
           </button>
         </form>
       </div>
@@ -241,10 +290,14 @@ export default function App() {
 
 const styles = {
   container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '900px', margin: '0 auto' },
-  loginContainer: { maxWidth: '400px', margin: '100px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px', textAlign: 'center' },
+  centerContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Arial' },
+  loginContainer: { maxWidth: '400px', margin: '100px auto', padding: '25px', border: '1px solid #ccc', borderRadius: '10px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' },
   formLogin: { display: 'flex', flexDirection: 'column', textAlign: 'left' },
-  input: { width: '100%', padding: '10px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' },
-  btnSubmit: { padding: '12px', backgroundColor: '#2e7d32', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' },
+  input: { width: '100%', padding: '12px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' },
+  btnSubmit: { padding: '14px', backgroundColor: '#2e7d32', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' },
+  waitingCard: { backgroundColor: '#f9f9f9', border: '2px dashed #1976d2', padding: '30px', borderRadius: '12px', textAlign: 'center', marginTop: '40px' },
+  gridPosti: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '20px' },
+  slotPosto: { padding: '15px', border: '2px solid #ccc', borderRadius: '8px', backgroundColor: '#fff' },
   header: { display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #ccc', paddingBottom: '10px' },
   cardInfo: { backgroundColor: '#f5f5f5', padding: '15px', borderRadius: '8px', marginBottom: '15px' },
   manoContainer: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
@@ -253,6 +306,7 @@ const styles = {
   grigliaPulsanti: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '15px' },
   btnDichiarazione: { padding: '10px 15px', fontSize: '16px', backgroundColor: '#1976d2', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
   alertSuccess: { backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '15px', borderRadius: '6px', textAlign: 'center', marginTop: '20px' },
+  alertError: { backgroundColor: '#ffebee', color: '#c62828', padding: '10px', borderRadius: '6px', marginBottom: '15px', fontSize: '14px' },
   tabellaPunti: { margin: '20px 0', backgroundColor: '#fafafa', padding: '10px', borderRadius: '8px' },
   tavoloVerde: { backgroundColor: '#357a38', color: '#fff', padding: '20px', borderRadius: '12px', minHeight: '150px', textAlign: 'center', margin: '20px 0' },
   carteSulTavolo: { display: 'flex', gap: '15px', justifyContent: 'center', marginTop: '10px' },
