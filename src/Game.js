@@ -82,24 +82,10 @@ export const GiocoCarte = {
       punti: { '0': 0, '1': 0, '2': 0, '3': 0 },
       tavolo: [],
       ultimoVincitore: null,
-      nomiGiocatori: { '0': null, '1': null, '2': null, '3': null },
-      giocatoriConnessi: 0,
     };
 
     assegnaCartaSpettante(G, ctx);
     return G;
-  },
-
-  moves: {
-    registraGiocatore: {
-      move: ({ G, ctx, playerID }, nome) => {
-        if (G.nomiGiocatori[playerID] === null && nome) {
-          G.nomiGiocatori[playerID] = nome.trim();
-          G.giocatoriConnessi = Object.values(G.nomiGiocatori).filter(n => n !== null).length;
-        }
-      },
-      noLimit: true,
-    }
   },
 
   phases: {
@@ -107,9 +93,6 @@ export const GiocoCarte = {
       start: true,
       moves: {
         faiDichiarazione: ({ G, ctx, playerID }, valore) => {
-          // Si può dichiarare solo se tutti e 4 i giocatori sono al tavolo
-          if (G.giocatoriConnessi < 4) return;
-
           G.declarations[playerID] = valore;
           if (Object.keys(G.declarations).length === 4) {
             ctx.events.endPhase();

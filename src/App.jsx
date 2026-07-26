@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { GiocoCarte } from './Game';
@@ -6,14 +6,6 @@ import { GiocoCarte } from './Game';
 const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 
 function TavoloDaGioco({ G, ctx, moves, playerID }) {
-  const mioNome = localStorage.getItem('mio_nome_giocatore') || `Giocatore ${playerID}`;
-
-  useEffect(() => {
-    if (moves && moves.registraGiocatore) {
-      moves.registraGiocatore(mioNome);
-    }
-  }, [moves, mioNome]);
-
   if (!G || !ctx) {
     return (
       <div style={styles.centerContainer}>
@@ -22,30 +14,36 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
+  // Recuperiamo l'elenco e i nomi dei giocatori registrati dal context nativo
+  const giocatori = ctx.playOrderData || [];
+  const giocatoriConnessi = giocatori.filter(p => p.name);
+  const numConnessi = giocatoriConnessi.length;
+
   const eMioTurno = ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
-  const numGiocatoriConnessi = Object.values(G.nomiGiocatori || {}).filter(n => n !== null).length;
 
-  // SGUARDO SALA D'ATTESA: se ci sono meno di 4 giocatori
-  if (numGiocatoriConnessi < 4) {
+  // SCHERMATA SALA D'ATTESA: se ci sono meno di 4 giocatori registrati
+  if (numConnessi < 4) {
     return (
       <div style={styles.container}>
         <div style={styles.waitingCard}>
           <h2>⏳ In attesa dei giocatori...</h2>
           <p style={{ fontSize: '18px' }}>
-            Giocatori collegati al tavolo: <strong>{numGiocatoriConnessi} / 4</strong>
+            Giocatori collegati al tavolo: <strong>{numConnessi} / 4</strong>
           </p>
           
           <div style={styles.gridPosti}>
-            {['0', '1', '2', '3'].map((pID) => {
-              const nomeG = G.nomiGiocatori?.[pID];
-              const eMe = pID === playerID;
+            {[0, 1, 2, 3].map((idx) => {
+              const infoGiocatore = giocatori[idx];
+              const nomeG = infoGiocatore ? infoGiocatore.name : null;
+              const eMe = String(idx) === playerID;
+
               return (
-                <div key={pID} style={{ ...styles.slotPosto, borderColor: nomeG ? '#2e7d32' : '#ccc' }}>
-                  <div style={{ fontSize: '14px', color: '#666' }}>Posto {Number(pID) + 1}</div>
+                <div key={idx} style={{ ...styles.slotPosto, borderColor: nomeG ? '#2e7d32' : '#ccc' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Posto {idx + 1}</div>
                   <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '5px' }}>
-                    {nomeG ? nomeG + (eMe ? ' (Tu)' : '') : '🪑 In attesa...'}
+                    {nomeG ? `${nomeG}${eMe ? ' (Tu)' : ''}` : '🪑 In attesa...'}
                   </div>
                 </div>
               );
@@ -59,7 +57,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
-  // FASE 1: DICHIARAZIONE (Solo quando tutti e 4 sono al tavolo)
+  // FASE DICHIARAZIONE
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
@@ -83,12 +81,12 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
 
         {dichFatta ? (
           <div style={styles.alertSuccess}>
-            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa delle dichiarazioni altrui...
+            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri giocatori...
           </div>
         ) : (
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <h3>Quante prese pensi di fare?</h3>
-            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${G.nomiGiocatori?.[ctx.currentPlayer] || 'un altro giocatore'}...`}</p>
+            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${giocatori[ctx.currentPlayer]?.name || 'un altro giocatore'}...`}</p>
             
             {eMioTurno && (
               <div style={styles.grigliaPulsanti}>
@@ -109,7 +107,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
-  // FASE 2: GIOCO MANI
+  // FASE GIOCO MANI
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -118,9 +116,9 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
           <p>Briscola: <strong style={{ fontSize: '20px' }}>{G.briscola}</strong></p>
         </div>
         <div>
-          <p>Mio Nome: <strong>{G.nomiGiocatori?.[playerID]}</strong></p>
+          <p>Mio Nome: <strong>{giocatori[playerID]?.name}</strong></p>
           <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
-            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${G.nomiGiocatori?.[ctx.currentPlayer] || ctx.currentPlayer}`}
+            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${giocatori[ctx.currentPlayer]?.name}`}
           </p>
         </div>
       </div>
@@ -128,9 +126,9 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
       <div style={styles.tabellaPunti}>
         <h4>Situazione Giocatori</h4>
         <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-          {['0', '1', '2', '3'].map(pID => (
-            <div key={pID} style={{ padding: '8px', border: pID === ctx.currentPlayer ? '2px solid #2e7d32' : '1px solid #ccc', borderRadius: '6px' }}>
-              <strong>{G.nomiGiocatori?.[pID] || `Giocatore ${pID}`}</strong>
+          {[0, 1, 2, 3].map(pID => (
+            <div key={pID} style={{ padding: '8px', border: String(pID) === ctx.currentPlayer ? '2px solid #2e7d32' : '1px solid #ccc', borderRadius: '6px' }}>
+              <strong>{giocatori[pID]?.name || `Giocatore ${pID}`}</strong>
               <div>Dichiarato: {G.declarations?.[pID] ?? '-'}</div>
               <div>Prese Fatte: {G.prese?.[pID] ?? 0}</div>
               <div>Punti Totali: {G.punti?.[pID] ?? 0}</div>
@@ -148,7 +146,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
             G.tavolo.map((item, idx) => (
               <div key={idx} style={styles.cartaTavolo}>
                 <span style={{ fontSize: '12px', color: '#555' }}>
-                  {G.nomiGiocatori?.[item.player] || item.player}
+                  {giocatori[item.player]?.name || item.player}
                 </span>
                 <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
                   {item.carta.valore} {item.carta.seme}
@@ -193,11 +191,10 @@ const GiocoClient = Client({
 export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [playerID, setPlayerID] = useState(null);
+  const [playerInfo, setPlayerInfo] = useState(null);
   const [errore, setErrore] = useState('');
   const [caricamento, setCaricamento] = useState(false);
 
-  // ASSEGNAZIONE AUTOMATICA DEL POSTO
   const gestisciIngressoAutomatico = async (e) => {
     e.preventDefault();
     setErrore('');
@@ -210,37 +207,58 @@ export default function App() {
     setCaricamento(true);
 
     try {
-      // Interroghiamo il server per scoprire lo stato dei posti disponibili
-      const response = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
-      
-      if (response.ok) {
-        const matchData = await response.json();
-        const players = matchData.players;
+      // 1. Verifichiamo se il match esiste o va creato
+      let matchRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
 
-        // Troviamo il primo posto libero (dove non c'è un nome o un id utente registrato)
-        const postoLibero = Object.keys(players).find(id => !players[id].name);
+      if (matchRes.status === 404) {
+        // Se non esiste, lo creiamo
+        await fetch(`${SERVER_URL}/games/gioco-carte-4p/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ numPlayers: 4, matchID: matchID }),
+        });
+        matchRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+      }
 
-        if (postoLibero !== undefined) {
-          localStorage.setItem('mio_nome_giocatore', nome.trim());
-          setPlayerID(postoLibero);
-        } else {
-          setErrore('❌ Questo tavolo è già al completo (4/4 giocatori)! Cerca o crea un altro tavolo.');
-        }
+      const matchData = await matchRes.json();
+      const players = matchData.players;
+
+      // 2. Cerchiamo un posto libero
+      const postoLibero = Object.keys(players).find(id => !players[id].name);
+
+      if (postoLibero === undefined) {
+        setErrore('❌ Questo tavolo è già al completo (4/4 giocatori)!');
+        setCaricamento(false);
+        return;
+      }
+
+      // 3. Ci uniamo ufficialmente al match tramite la Lobby API del server
+      const joinRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerID: String(postoLibero),
+          playerName: nome.trim(),
+        }),
+      });
+
+      if (joinRes.ok) {
+        const joinData = await joinRes.json();
+        setPlayerInfo({
+          playerID: String(postoLibero),
+          credentials: joinData.playerCredentials,
+        });
       } else {
-        // Se la stanza non esiste ancora sul server, entriamo come primo giocatore (Posto 0)
-        localStorage.setItem('mio_nome_giocatore', nome.trim());
-        setPlayerID('0');
+        setErrore('Errore durante l inserimento al tavolo. Riprova.');
       }
     } catch (err) {
-      // Fallback in caso di prima connessione
-      localStorage.setItem('mio_nome_giocatore', nome.trim());
-      setPlayerID('0');
+      setErrore('Impossibile contattare il server. Verificare la connessione.');
     } finally {
       setCaricamento(false);
     }
   };
 
-  if (playerID === null) {
+  if (!playerInfo) {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
@@ -272,7 +290,7 @@ export default function App() {
           </div>
 
           <button type="submit" disabled={caricamento} style={styles.btnSubmit}>
-            {caricamento ? 'Ricerca posto disponibile...' : 'Trova Posto e Entra'}
+            {caricamento ? 'Ricerca posto e registrazione...' : 'Trova Posto ed Entra'}
           </button>
         </form>
       </div>
@@ -282,8 +300,8 @@ export default function App() {
   return (
     <GiocoClient
       matchID={matchID}
-      playerID={String(playerID)}
-      credentials={`cred_${playerID}`}
+      playerID={playerInfo.playerID}
+      credentials={playerInfo.credentials}
     />
   );
 }
