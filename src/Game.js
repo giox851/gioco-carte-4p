@@ -81,7 +81,6 @@ export const GiocoCarte = {
       punti: { '0': 0, '1': 0, '2': 0, '3': 0 },
       tavolo: [],
       ultimoVincitore: null,
-      giocatori: { '0': null, '1': null, '2': null, '3': null },
     };
 
     assegnaCartaSpettante(G, ctx);
@@ -89,11 +88,6 @@ export const GiocoCarte = {
   },
 
   moves: {
-    entraAlTavolo: ({ G, playerID }, nome) => {
-      if (G.giocatori[playerID] === null && nome) {
-        G.giocatori[playerID] = nome.trim();
-      }
-    },
     faiDichiarazione: ({ G, ctx, playerID }, valore) => {
       G.declarations[playerID] = valore;
       if (Object.keys(G.declarations).length === 4) {

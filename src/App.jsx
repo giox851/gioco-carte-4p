@@ -5,14 +5,27 @@ import { GiocoCarte } from './Game';
 
 const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 
-function TavoloDaGioco({ G, ctx, moves, playerID }) {
-  const mioNome = localStorage.getItem('mio_nome_giocatore') || `Giocatore ${playerID}`;
+function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
+  const [listaGiocatori, setListaGiocatori] = useState([]);
 
+  // Polling leggero/sync per leggere gli iscritti ufficiali al tavolo dal server REST
   useEffect(() => {
-    if (moves && moves.entraAlTavolo && G.giocatori && G.giocatori[playerID] !== mioNome) {
-      moves.entraAlTavolo(mioNome);
-    }
-  }, [moves, playerID, mioNome, G.giocatori]);
+    const caricaStatoTavolo = async () => {
+      try {
+        const res = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+        if (res.ok) {
+          const data = await res.json();
+          setListaGiocatori(data.players || []);
+        }
+      } catch (e) {
+        console.error("Errore sync giocatori", e);
+      }
+    };
+
+    caricaStatoTavolo();
+    const interval = setInterval(caricaStatoTavolo, 2000); // Aggiorna ogni 2 secondi durante l'attesa
+    return () => clearInterval(interval);
+  }, [matchID]);
 
   if (!G || !ctx) {
     return (
@@ -22,13 +35,15 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
-  const giocatoriConnessi = Object.values(G.giocatori || {}).filter(n => n !== null);
-  const numConnessi = giocatoriConnessi.length;
+  // Calcoliamo i posti occupati dagli utenti reali
+  const connessi = listaGiocatori.filter(p => p.name);
+  const numConnessi = connessi.length;
 
   const eMioTurno = ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
 
+  // SALA D'ATTESA (Meno di 4 giocatori)
   if (numConnessi < 4) {
     return (
       <div style={styles.container}>
@@ -37,14 +52,16 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
           <p style={{ fontSize: '18px' }}>
             Giocatori collegati al tavolo: <strong>{numConnessi} / 4</strong>
           </p>
-          
+
           <div style={styles.gridPosti}>
-            {['0', '1', '2', '3'].map((id) => {
-              const nomeG = G.giocatori?.[id];
-              const eMe = id === playerID;
+            {[0, 1, 2, 3].map((idx) => {
+              const gInfo = listaGiocatori[idx];
+              const nomeG = gInfo ? gInfo.name : null;
+              const eMe = String(idx) === playerID;
+
               return (
-                <div key={id} style={{ ...styles.slotPosto, borderColor: nomeG ? '#2e7d32' : '#ccc' }}>
-                  <div style={{ fontSize: '14px', color: '#666' }}>Posto {Number(id) + 1}</div>
+                <div key={idx} style={{ ...styles.slotPosto, borderColor: nomeG ? '#2e7d32' : '#ccc' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Posto {idx + 1}</div>
                   <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '5px' }}>
                     {nomeG ? `${nomeG}${eMe ? ' (Tu)' : ''}` : '🪑 In attesa...'}
                   </div>
@@ -60,6 +77,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
+  // FASE DICHIARAZIONE
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
@@ -88,8 +106,8 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
         ) : (
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <h3>Quante prese pensi di fare?</h3>
-            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${G.giocatori?.[ctx.currentPlayer] || 'un altro giocatore'}...`}</p>
-            
+            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${listaGiocatori[ctx.currentPlayer]?.name || 'un altro giocatore'}...`}</p>
+
             {eMioTurno && (
               <div style={styles.grigliaPulsanti}>
                 {Array.from({ length: (G.totaleMani || 0) + 1 }, (_, i) => i).map(num => (
@@ -109,6 +127,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
+  // FASE GIOCO MANI
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -117,9 +136,9 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
           <p>Briscola: <strong style={{ fontSize: '20px' }}>{G.briscola}</strong></p>
         </div>
         <div>
-          <p>Mio Nome: <strong>{G.giocatori?.[playerID]}</strong></p>
+          <p>Mio Nome: <strong>{listaGiocatori[playerID]?.name}</strong></p>
           <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
-            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${G.giocatori?.[ctx.currentPlayer] || ctx.currentPlayer}`}
+            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${listaGiocatori[ctx.currentPlayer]?.name}`}
           </p>
         </div>
       </div>
@@ -127,9 +146,9 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
       <div style={styles.tabellaPunti}>
         <h4>Situazione Giocatori</h4>
         <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-          {['0', '1', '2', '3'].map(pID => (
-            <div key={pID} style={{ padding: '8px', border: pID === ctx.currentPlayer ? '2px solid #2e7d32' : '1px solid #ccc', borderRadius: '6px' }}>
-              <strong>{G.giocatori?.[pID] || `Giocatore ${pID}`}</strong>
+          {[0, 1, 2, 3].map(pID => (
+            <div key={pID} style={{ padding: '8px', border: String(pID) === ctx.currentPlayer ? '2px solid #2e7d32' : '1px solid #ccc', borderRadius: '6px' }}>
+              <strong>{listaGiocatori[pID]?.name || `Giocatore ${pID}`}</strong>
               <div>Dichiarato: {G.declarations?.[pID] ?? '-'}</div>
               <div>Prese Fatte: {G.prese?.[pID] ?? 0}</div>
               <div>Punti Totali: {G.punti?.[pID] ?? 0}</div>
@@ -147,7 +166,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
             G.tavolo.map((item, idx) => (
               <div key={idx} style={styles.cartaTavolo}>
                 <span style={{ fontSize: '12px', color: '#555' }}>
-                  {G.giocatori?.[item.player] || item.player}
+                  {listaGiocatori[item.player]?.name || item.player}
                 </span>
                 <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
                   {item.carta.valore} {item.carta.seme}
@@ -192,26 +211,81 @@ const GiocoClient = Client({
 export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [playerID, setPlayerID] = useState(null);
+  const [session, setSession] = useState(null);
+  const [errore, setErrore] = useState('');
+  const [caricamento, setCaricamento] = useState(false);
 
-  const entraInPartita = (e) => {
+  // INGRESSO AUTOMATICO
+  const gestisciIngresso = async (e) => {
     e.preventDefault();
-    if (!nome.trim()) return;
+    setErrore('');
 
-    localStorage.setItem('mio_nome_giocatore', nome.trim());
-    const postoScelto = prompt("Scegli il tuo posto al tavolo (digita 0, 1, 2 o 3):", "0");
-    if (postoScelto !== null && ['0', '1', '2', '3'].includes(postoScelto.trim())) {
-      setPlayerID(postoScelto.trim());
-    } else {
-      alert("Posto non valido. Inserisci un numero tra 0 e 3.");
+    if (!nome.trim()) {
+      setErrore('Inserisci un nome valido!');
+      return;
+    }
+
+    setCaricamento(true);
+
+    try {
+      // 1. Controlla se la stanza esiste, altrimenti creala
+      let matchRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+      
+      if (matchRes.status === 404) {
+        await fetch(`${SERVER_URL}/games/gioco-carte-4p/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ numPlayers: 4, setupData: {}, matchID: matchID }),
+        });
+        matchRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}`);
+      }
+
+      const matchData = await matchRes.json();
+      const players = matchData.players || {};
+
+      // 2. Trova il primo posto vuoto (Senza nome associato)
+      const postoLibero = Object.keys(players).find(id => !players[id].name);
+
+      if (postoLibero === undefined) {
+        setErrore('❌ Questo tavolo è al completo (4/4)! Cambia codice tavolo.');
+        setCaricamento(false);
+        return;
+      }
+
+      // 3. Unisciti tramite API al posto trovato
+      const joinRes = await fetch(`${SERVER_URL}/games/gioco-carte-4p/${matchID}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerID: String(postoLibero),
+          playerName: nome.trim(),
+        }),
+      });
+
+      if (joinRes.ok) {
+        const joinData = await joinRes.json();
+        setSession({
+          playerID: String(postoLibero),
+          credentials: joinData.playerCredentials,
+        });
+      } else {
+        setErrore('Errore di registrazione al tavolo. Riprova.');
+      }
+    } catch (err) {
+      setErrore('Impossibile contattare il server Render.');
+    } finally {
+      setCaricamento(false);
     }
   };
 
-  if (playerID === null) {
+  if (!session) {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
-        <form onSubmit={entraInPartita} style={styles.formLogin}>
+
+        {errore && <div style={styles.alertError}>{errore}</div>}
+
+        <form onSubmit={gestisciIngresso} style={styles.formLogin}>
           <div style={{ marginBottom: '15px' }}>
             <label>Il tuo Nome:</label>
             <input
@@ -235,8 +309,8 @@ export default function App() {
             />
           </div>
 
-          <button type="submit" style={styles.btnSubmit}>
-            Accedi al Tavolo
+          <button type="submit" disabled={caricamento} style={styles.btnSubmit}>
+            {caricamento ? 'Trovo un posto libero...' : 'Entra nel Tavolo'}
           </button>
         </form>
       </div>
@@ -246,7 +320,8 @@ export default function App() {
   return (
     <GiocoClient
       matchID={matchID}
-      playerID={String(playerID)}
+      playerID={session.playerID}
+      credentials={session.credentials}
     />
   );
 }
@@ -269,6 +344,7 @@ const styles = {
   grigliaPulsanti: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '15px' },
   btnDichiarazione: { padding: '10px 15px', fontSize: '16px', backgroundColor: '#1976d2', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
   alertSuccess: { backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '15px', borderRadius: '6px', textAlign: 'center', marginTop: '20px' },
+  alertError: { backgroundColor: '#ffebee', color: '#c62828', padding: '10px', borderRadius: '6px', marginBottom: '15px', fontSize: '14px' },
   tabellaPunti: { margin: '20px 0', backgroundColor: '#fafafa', padding: '10px', borderRadius: '8px' },
   tavoloVerde: { backgroundColor: '#357a38', color: '#fff', padding: '20px', borderRadius: '12px', minHeight: '150px', textAlign: 'center', margin: '20px 0' },
   carteSulTavolo: { display: 'flex', gap: '15px', justifyContent: 'center', marginTop: '10px' },
