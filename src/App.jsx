@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
+import { LobbyClient } from 'boardgame.io/client';
 import { GiocoCarte } from './Game';
 
 const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
+const lobbyClient = new LobbyClient({ server: SERVER_URL });
 
 function TavoloDaGioco({ G, ctx, moves, playerID }) {
   if (!G || !ctx) {
@@ -18,7 +20,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
 
-  // Fase di Dichiarazione
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
@@ -41,7 +42,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
 
         {dichFatta ? (
           <div style={styles.alertSuccess}>
-            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri giocatori...
+            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri...
           </div>
         ) : (
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
@@ -67,7 +68,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
-  // Fase Gioco Normale
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -127,31 +127,86 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
   );
 }
 
-// Configurazione Client con Socket
-const GiocoClient = Client({
-  game: GiocoCarte,
-  board: TavoloDaGioco,
-  multiplayer: SocketIO({ server: SERVER_URL }),
-  debug: false,
-});
-
 export default function App() {
+  const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [playerID, setPlayerID] = useState('0');
-  const [inGioco, setInGioco] = useState(false);
+  const [session, setSession] = useState(null);
+  const [caricamento, setCaricamento] = useState(false);
+  const [errore, setErrore] = useState('');
 
-  const gestisciIngresso = (e) => {
+  const gestisciIngresso = async (e) => {
     e.preventDefault();
-    setInGioco(true);
+    if (!nome.trim()) return;
+
+    setCaricamento(true);
+    setErrore('');
+
+    try {
+      // 1. Prova a creare la partita su Render (se non esiste già)
+      try {
+        await lobbyClient.createMatch('gioco-carte-4p', {
+          numPlayers: 4,
+          setupData: {},
+          matchID: matchID
+        });
+      } catch (err) {
+        // Se esiste già va bene, proseguiamo col join
+      }
+
+      // 2. Ottieni lo stato della partita per trovare il primo posto libero
+      const match = await lobbyClient.getMatch('gioco-carte-4p', matchID);
+      let freeSeat = match.players.find(p => p.name === nome.trim());
+      let playerID = freeSeat ? String(freeSeat.id) : null;
+      let playerCredentials = freeSeat ? freeSeat.credentials : null;
+
+      if (!playerID) {
+        const availableSeat = match.players.find(p => !p.name);
+        if (!availableSeat) {
+          throw new Error('Il tavolo è pieno (massimo 4 giocatori)!');
+        }
+        playerID = String(availableSeat.id);
+
+        // 3. Unisciti alla partita
+        const res = await lobbyClient.joinMatch('gioco-carte-4p', matchID, {
+          playerID: playerID,
+          playerName: nome.trim()
+        });
+        playerCredentials = res.playerCredentials;
+      }
+
+      setSession({
+        playerID,
+        credentials: playerCredentials
+      });
+    } catch (err) {
+      console.error(err);
+      setErrore('Impossibile connettersi al server. Riprova tra qualche secondo.');
+    } finally {
+      setCaricamento(false);
+    }
   };
 
-  if (!inGioco) {
+  if (!session) {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
 
+        {errore && <div style={styles.alertError}>{errore}</div>}
+
         <form onSubmit={gestisciIngresso} style={styles.formLogin}>
           <div style={{ marginBottom: '15px' }}>
+            <label>Il tuo Nome:</label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Inserisci il tuo nome"
+              style={styles.input}
+              required
+            />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
             <label>Codice Stanza / Tavolo:</label>
             <input
               type="text"
@@ -162,29 +217,28 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label>Seleziona il tuo Posto:</label>
-            <select
-              value={playerID}
-              onChange={(e) => setPlayerID(e.target.value)}
-              style={styles.input}
-            >
-              <option value="0">Giocatore 1 (Posto 0)</option>
-              <option value="1">Giocatore 2 (Posto 1)</option>
-              <option value="2">Giocatore 3 (Posto 2)</option>
-              <option value="3">Giocatore 4 (Posto 3)</option>
-            </select>
-          </div>
-
-          <button type="submit" style={styles.btnSubmit}>
-            Entra nel Tavolo
+          <button type="submit" disabled={caricamento} style={styles.btnSubmit}>
+            {caricamento ? 'Connessione in corso...' : 'Entra nel Tavolo'}
           </button>
         </form>
       </div>
     );
   }
 
-  return <GiocoClient matchID={matchID} playerID={playerID} />;
+  const GiocoClient = Client({
+    game: GiocoCarte,
+    board: TavoloDaGioco,
+    multiplayer: SocketIO({ server: SERVER_URL }),
+    debug: false,
+  });
+
+  return (
+    <GiocoClient
+      matchID={matchID}
+      playerID={session.playerID}
+      credentials={session.credentials}
+    />
+  );
 }
 
 const styles = {
@@ -194,6 +248,7 @@ const styles = {
   formLogin: { display: 'flex', flexDirection: 'column', textAlign: 'left' },
   input: { width: '100%', padding: '12px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' },
   btnSubmit: { padding: '14px', backgroundColor: '#2e7d32', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' },
+  alertError: { backgroundColor: '#ffebee', color: '#c62828', padding: '10px', borderRadius: '6px', marginBottom: '15px', fontSize: '14px' },
   header: { display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #ccc', paddingBottom: '10px' },
   cardInfo: { backgroundColor: '#f5f5f5', padding: '15px', borderRadius: '8px', marginBottom: '15px' },
   manoContainer: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
