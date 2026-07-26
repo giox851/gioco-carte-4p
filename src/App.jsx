@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { GiocoCarte } from './Game';
 
 const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 
-function TavoloDaGioco({ G, ctx, moves, playerID }) {
+function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
+  const nomeGiocatore = localStorage.getItem('playerName') || `Giocatore ${Number(playerID) + 1}`;
+
+  // Registra il nome del giocatore nello stato del server al primo caricamento
+  useEffect(() => {
+    if (moves && moves.registraGiocatore) {
+      moves.registraGiocatore({ playerID, name: nomeGiocatore });
+    }
+  }, [playerID, nomeGiocatore]);
+
   if (!G || !ctx) {
     return (
       <div style={styles.centerContainer}>
@@ -14,16 +23,29 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
     );
   }
 
-  const nomeGiocatore = localStorage.getItem('playerName') || `Giocatore ${Number(playerID) + 1}`;
   const eMioTurno = ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
 
+  // Recupera i nomi reali salvati nello stato del gioco G (se presenti)
+  const getNomePosto = (id) => {
+    if (G.nomiGiocatori && G.nomiGiocatori[id]) {
+      return G.nomiGiocatori[id];
+    }
+    return `Giocatore ${Number(id) + 1}`;
+  };
+
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
+        {/* Intestazione con Nome Tavolo */}
+        <div style={styles.topBar}>
+          <h2>Tavolo: <span style={{ color: '#1976d2' }}>{matchID}</span></h2>
+          <p>Sei collegato come: <strong>{nomeGiocatore}</strong> (Posto {Number(playerID) + 1})</p>
+        </div>
+
         <div style={styles.cardInfo}>
-          <h2>Fase di Dichiarazione - {nomeGiocatore} (Posto {Number(playerID) + 1})</h2>
+          <h2>Fase di Dichiarazione</h2>
           <p><strong>Round:</strong> {G.roundCorrente} / 13</p>
           <p><strong>Briscola:</strong> <span style={{ fontSize: '24px' }}>{G.briscola}</span></p>
         </div>
@@ -41,12 +63,12 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
 
         {dichFatta ? (
           <div style={styles.alertSuccess}>
-            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri...
+            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri giocatori...
           </div>
         ) : (
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <h3>Quante prese pensi di fare?</h3>
-            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : 'In attesa degli altri giocatori...'}</p>
+            <p>{eMioTurno ? '👉 È IL TUO TURNO DI DICHIARARE!' : `In attesa di ${getNomePosto(ctx.currentPlayer)}...`}</p>
 
             {eMioTurno && (
               <div style={styles.grigliaPulsanti}>
@@ -69,15 +91,20 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
 
   return (
     <div style={styles.container}>
+      {/* Intestazione con Nome Tavolo */}
+      <div style={styles.topBar}>
+        <h2>Tavolo: <span style={{ color: '#1976d2' }}>{matchID}</span></h2>
+        <p>Giocatore: <strong>{nomeGiocatore}</strong> (Posto {Number(playerID) + 1})</p>
+      </div>
+
       <div style={styles.header}>
         <div>
           <h3>Round {G.roundCorrente} - Mano {G.manoCorrente} / {G.totaleMani}</h3>
           <p>Briscola: <strong style={{ fontSize: '20px' }}>{G.briscola}</strong></p>
         </div>
         <div>
-          <p>Ciao <strong>{nomeGiocatore}</strong> (Posto {Number(playerID) + 1})</p>
-          <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
-            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno del Giocatore ${Number(ctx.currentPlayer) + 1}`}
+          <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold', fontSize: '18px' }}>
+            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${getNomePosto(ctx.currentPlayer)}`}
           </p>
         </div>
       </div>
@@ -86,12 +113,12 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
         <h4>Carte sul Tavolo</h4>
         <div style={styles.carteSulTavolo}>
           {!G.tavolo || G.tavolo.length === 0 ? (
-            <p style={{ color: '#aaa' }}>Nessuna carta sul tavolo</p>
+            <p style={{ color: '#ccc' }}>Nessuna carta sul tavolo</p>
           ) : (
             G.tavolo.map((item, idx) => (
               <div key={idx} style={styles.cartaTavolo}>
-                <span style={{ fontSize: '12px', color: '#555' }}>
-                  Giocatore {Number(item.player) + 1}
+                <span style={{ fontSize: '12px', color: '#555', display: 'block' }}>
+                  {getNomePosto(item.player)}
                 </span>
                 <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
                   {item.carta.valore} {item.carta.seme}
@@ -129,6 +156,7 @@ function TavoloDaGioco({ G, ctx, moves, playerID }) {
 export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
+  const [playerID, setPlayerID] = useState('0');
   const [session, setSession] = useState(null);
 
   const gestisciIngresso = (e) => {
@@ -137,19 +165,9 @@ export default function App() {
 
     localStorage.setItem('playerName', nome.trim());
 
-    // Assegnazione automatica del posto basata sul matchID memorizzato localmente o progressivo
-    const key = `seat_${matchID}_${nome.trim()}`;
-    let savedSeat = localStorage.getItem(key);
-
-    if (!savedSeat) {
-      // Se è un nuovo utente su questa scheda/browser, prende il posto successivo
-      const existingSeats = Object.keys(localStorage).filter(k => k.startsWith(`seat_${matchID}_`));
-      savedSeat = String(existingSeats.length % 4);
-      localStorage.setItem(key, savedSeat);
-    }
-
     setSession({
-      playerID: savedSeat
+      matchID: matchID.trim(),
+      playerID: playerID
     });
   };
 
@@ -171,8 +189,8 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label>Codice Stanza / Tavolo:</label>
+          <div style={{ marginBottom: '15px' }}>
+            <label>Codice Stanza / Nome Tavolo:</label>
             <input
               type="text"
               value={matchID}
@@ -180,6 +198,20 @@ export default function App() {
               style={styles.input}
               required
             />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label>Scegli la tua Posizione al Tavolo:</label>
+            <select
+              value={playerID}
+              onChange={(e) => setPlayerID(e.target.value)}
+              style={styles.input}
+            >
+              <option value="0">Posto 1 (Giocatore 1)</option>
+              <option value="1">Posto 2 (Giocatore 2)</option>
+              <option value="2">Posto 3 (Giocatore 3)</option>
+              <option value="3">Posto 4 (Giocatore 4)</option>
+            </select>
           </div>
 
           <button type="submit" style={styles.btnSubmit}>
@@ -192,12 +224,12 @@ export default function App() {
 
   const GiocoClient = Client({
     game: GiocoCarte,
-    board: TavoloDaGioco,
+    board: (props) => <TavoloDaGioco {...props} matchID={session.matchID} />,
     multiplayer: SocketIO({ server: SERVER_URL }),
     debug: false,
   });
 
-  return <GiocoClient matchID={matchID} playerID={session.playerID} />;
+  return <GiocoClient matchID={session.matchID} playerID={session.playerID} />;
 }
 
 const styles = {
@@ -207,6 +239,7 @@ const styles = {
   formLogin: { display: 'flex', flexDirection: 'column', textAlign: 'left' },
   input: { width: '100%', padding: '12px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' },
   btnSubmit: { padding: '14px', backgroundColor: '#2e7d32', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0f4f8', padding: '10px 20px', borderRadius: '8px', marginBottom: '15px', borderLeft: '5px solid #1976d2' },
   header: { display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #ccc', paddingBottom: '10px' },
   cardInfo: { backgroundColor: '#f5f5f5', padding: '15px', borderRadius: '8px', marginBottom: '15px' },
   manoContainer: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
@@ -217,5 +250,5 @@ const styles = {
   alertSuccess: { backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '15px', borderRadius: '6px', textAlign: 'center', marginTop: '20px' },
   tavoloVerde: { backgroundColor: '#357a38', color: '#fff', padding: '20px', borderRadius: '12px', minHeight: '150px', textAlign: 'center', margin: '20px 0' },
   carteSulTavolo: { display: 'flex', gap: '15px', justifyContent: 'center', marginTop: '10px' },
-  cartaTavolo: { backgroundColor: '#fff', color: '#000', padding: '10px 15px', borderRadius: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)' }
+  cartaTavolo: { backgroundColor: '#fff', color: '#000', padding: '10px 15px', borderRadius: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', minWidth: '80px' }
 };

@@ -1,142 +1,178 @@
-const VALORI = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-const SEMI = ['♥️', '♦️', '♣️', '♠️'];
-
-const GERARCHIA_VALORI = {
-  'A': 13, 'K': 12, 'Q': 11, 'J': 10, '10': 9, '9': 8,
-  '8': 7, '7': 6, '6': 5, '5': 4, '4': 3, '3': 2, '2': 1
-};
-
+// Helper per generare e mescolare un mazzo di 40 carte italiane/piacentine
 function creaMazzo() {
+  const semi = ['Bastoni', 'Coppe', 'Denari', 'Spade'];
+  const valori = ['1', '2', '3', '4', '5', '6', '7', 'Fante', 'Cavallo', 'Re'];
   const mazzo = [];
-  for (const seme of SEMI) {
-    for (const valore of VALORI) {
+
+  for (const seme of semi) {
+    for (const valore of valori) {
       mazzo.push({ seme, valore });
     }
   }
+
+  // Shuffle (Algoritmo Fisher-Yates)
+  for (let i = mazzo.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [mazzo[i], mazzo[j]] = [mazzo[j], mazzo[i]];
+  }
+
   return mazzo;
 }
 
-function mescola(array, random) {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(random.Number() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-function assegnaCartaSpettante(G, ctx) {
-  const carteManoIniziale = 14 - G.roundCorrente;
-  const mazzoMescolato = mescola(creaMazzo(), ctx.random);
-
-  G.totaleMani = carteManoIniziale;
-  G.manoCorrente = 1;
-  G.tavolo = [];
-  G.declarations = {};
-  G.prese = { '0': 0, '1': 0, '2': 0, '3': 0 };
-  G.ultimoVincitore = null;
-
-  G.hands = {
-    '0': mazzoMescolato.slice(0, carteManoIniziale),
-    '1': mazzoMescolato.slice(carteManoIniziale, carteManoIniziale * 2),
-    '2': mazzoMescolato.slice(carteManoIniziale * 2, carteManoIniziale * 3),
-    '3': mazzoMescolato.slice(carteManoIniziale * 3, carteManoIniziale * 4),
+// Helper per calcolare la forza di una carta
+function calcolaValoreCarta(carta, briscola, semeDiMano) {
+  // Gerarchia valore standard: Re > Cavallo > Fante > 7 > 6 > 5 > 4 > 3 > 2 > 1
+  const gerarchia = {
+    '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
+    '6': 6, '7': 7, 'Fante': 8, 'Cavallo': 9, 'Re': 10
   };
 
-  const indiceSemeCasuale = Math.floor(ctx.random.Number() * SEMI.length);
-  G.briscola = SEMI[indiceSemeCasuale];
-}
+  let punteggio = gerarchia[carta.valore] || 0;
 
-function calcolaVincitorePresa(tavolo, briscola) {
-  let vincitore = tavolo[0];
-
-  for (let i = 1; i < tavolo.length; i++) {
-    const sfidante = tavolo[i];
-    const cartaVincitrice = vincitore.carta;
-    const cartaSfidante = sfidante.carta;
-
-    if (cartaSfidante.seme === briscola && cartaVincitrice.seme !== briscola) {
-      vincitore = sfidante;
-    } else if (cartaSfidante.seme === cartaVincitrice.seme) {
-      if (GERARCHIA_VALORI[cartaSfidante.valore] > GERARCHIA_VALORI[cartaVincitrice.valore]) {
-        vincitore = sfidante;
-      }
-    }
+  // Se è briscola ha un peso dominante
+  if (carta.seme === briscola) {
+    punteggio += 100;
+  } 
+  // Se rispetta il seme di mano della prima carta giocata
+  else if (carta.seme === semeDiMano) {
+    punteggio += 10;
   }
-  return vincitore.player;
+
+  return punteggio;
 }
 
 export const GiocoCarte = {
   name: 'gioco-carte-4p',
 
-  setup: (ctx) => {
-    const G = {
-      roundCorrente: 1,
-      totaleMani: 13,
-      manoCorrente: 1,
-      briscola: '♥️',
-      hands: { '0': [], '1': [], '2': [], '3': [] },
-      declarations: {},
-      prese: { '0': 0, '1': 0, '2': 0, '3': 0 },
-      punti: { '0': 0, '1': 0, '2': 0, '3': 0 },
-      tavolo: [],
-      ultimoVincitore: null,
-    };
-
-    assegnaCartaSpettante(G, ctx);
-    return G;
-  },
+  setup: () => ({
+    roundCorrente: 1,
+    manoCorrente: 1,
+    totaleMani: 10, // Inizia con 10 carte a testa nel primo round
+    briscola: '',
+    hands: { 0: [], 1: [], 2: [], 3: [] },
+    declarations: {},
+    prese: { 0: 0, 1: 0, 2: 0, 3: 0 },
+    punteggiTotali: { 0: 0, 1: 0, 2: 0, 3: 0 },
+    tavolo: [],
+    nomiGiocatori: { 0: 'Giocatore 1', 1: 'Giocatore 2', 2: 'Giocatore 3', 3: 'Giocatore 4' },
+  }),
 
   moves: {
-    faiDichiarazione: ({ G, ctx, playerID }, valore) => {
-      G.declarations[playerID] = valore;
-      if (Object.keys(G.declarations).length === 4) {
-        ctx.events.endPhase();
-      } else {
-        ctx.events.endTurn();
+    // Registra il nome del giocatore nello stato condiviso G
+    registraGiocatore: (G, ctx, { playerID, name }) => {
+      if (!G.nomiGiocatori) {
+        G.nomiGiocatori = {};
+      }
+      if (name && name.trim() !== '') {
+        G.nomiGiocatori[playerID] = name.trim();
       }
     },
-    giocaCarta: ({ G, ctx, playerID }, cartaIndex) => {
-      const cartaGiocata = G.hands[playerID].splice(cartaIndex, 1)[0];
-      G.tavolo.push({ player: playerID, carta: cartaGiocata });
 
-      if (G.tavolo.length === 4) {
-        const vincitoreID = calcolaVincitorePresa(G.tavolo, G.briscola);
-        G.prese[vincitoreID] += 1;
-        G.ultimoVincitore = vincitoreID;
+    // Mossa per registrare la dichiarazione (scommessa) sulle prese
+    faiDichiarazione: (G, ctx, numeroPrese) => {
+      G.declarations[ctx.currentPlayer] = numeroPrese;
+    },
 
-        if (G.manoCorrente < G.totaleMani) {
-          G.manoCorrente += 1;
-          G.tavolo = [];
-          ctx.events.endTurn({ next: vincitoreID });
-        } else {
-          ['0', '1', '2', '3'].forEach(pID => {
-            const dich = G.declarations[pID];
-            const preseFatte = G.prese[pID];
-            if (dich === preseFatte) {
-              G.punti[pID] += 10 + dich;
-            }
-          });
+    // Mossa per calare la carta sul tavolo
+    giocaCarta: (G, ctx, cartaIndex) => {
+      const player = ctx.currentPlayer;
+      const cartaGiocata = G.hands[player][cartaIndex];
 
-          if (G.roundCorrente < 13) {
-            G.roundCorrente += 1;
-            assegnaCartaSpettante(G, ctx);
-            ctx.events.setPhase('dichiarazione');
-          } else {
-            ctx.events.endGame();
-          }
-        }
-      } else {
-        ctx.events.endTurn();
-      }
+      if (!cartaGiocata) return;
+
+      // Rimuovi la carta dalla mano del giocatore
+      G.hands[player].splice(cartaIndex, 1);
+
+      // Aggiungi la carta al tavolo
+      G.tavolo.push({
+        player: player,
+        carta: cartaGiocata
+      });
     }
   },
 
   phases: {
     dichiarazione: {
       start: true,
-      next: 'giocoMani'
+      onBegin: (G, ctx) => {
+        // Ripristina tavolo e conteggi del round
+        G.tavolo = [];
+        G.declarations = {};
+        G.prese = { 0: 0, 1: 0, 2: 0, 3: 0 };
+
+        // Crea e distribuisce le carte
+        const mazzo = creaMazzo();
+        const cartePerGiocatore = Math.min(11 - G.roundCorrente, 10); // Scala ad ogni round
+        G.totaleMani = cartePerGiocatore;
+
+        for (let i = 0; i < 4; i++) {
+          G.hands[i] = mazzo.splice(0, cartePerGiocatore);
+        }
+
+        // Estrai la briscola
+        const cartaBriscola = mazzo.pop();
+        G.briscola = cartaBriscola ? cartaBriscola.seme : 'Bastoni';
+      },
+      endIf: (G) => {
+        // La fase termina quando tutti e 4 i giocatori hanno dichiarato
+        return Object.keys(G.declarations).length === 4;
+      },
+      next: 'gioco',
     },
-    giocoMani: {}
+
+    gioco: {
+      turn: {
+        moveLimit: 1,
+      },
+      onEnd: (G, ctx) => {
+        // Fine della singola mano (quando ci sono 4 carte sul tavolo)
+        if (G.tavolo.length === 4) {
+          const semeDiMano = G.tavolo[0].carta.seme;
+          let vincitoreMano = G.tavolo[0].player;
+          let punteggioMassimo = -1;
+
+          // Determina il vincitore della presa
+          for (const giocata of G.tavolo) {
+            const valore = calcolaValoreCarta(giocata.carta, G.briscola, semeDiMano);
+            if (valore > punteggioMassimo) {
+              punteggioMassimo = valore;
+              vincitoreMano = giocata.player;
+            }
+          }
+
+          // Assegna la presa al vincitore
+          G.prese[vincitoreMano] = (G.prese[vincitoreMano] || 0) + 1;
+          G.tavolo = [];
+          G.manoCorrente += 1;
+        }
+      },
+      endIf: (G) => {
+        // Il round finisce quando tutte le carte in mano sono state giocate
+        return G.hands[0].length === 0 &&
+               G.hands[1].length === 0 &&
+               G.hands[2].length === 0 &&
+               G.hands[3].length === 0;
+      },
+      onEndPhase: (G) => {
+        // Calcolo punteggi di fine round
+        for (let i = 0; i < 4; i++) {
+          const dichiarate = G.declarations[i] || 0;
+          const fatte = G.prese[i] || 0;
+
+          if (dichiarate === fatte) {
+            // Punti per aver azzeccato la dichiarazione
+            G.punteggiTotali[i] += 10 + fatte;
+          } else {
+            // Penalità per errore
+            G.punteggiTotali[i] -= Math.abs(dichiarate - fatte);
+          }
+        }
+
+        // Avanza di round
+        G.roundCorrente += 1;
+        G.manoCorrente = 1;
+      },
+      next: 'dichiarazione',
+    }
   }
 };
