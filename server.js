@@ -12,7 +12,19 @@ const server = Server({
   ],
 });
 
-const PORT = process.env.PORT || 8000;
+const PORT = proceimport { Server, Origins } from 'boardgame.io/dist/cjs/server.js';
+import { GiocoCarte } from './src/Game.js';
+
+const server = Server({
+  games: [GiocoCarte],
+  origins: [Origins.LOCALHOST, '*'],
+});
+
+const PORT = process.env.PORT || 10000;
+
+server.run(PORT, () => {
+  console.log(`Server attivo sulla porta ${PORT}`);
+});ss.env.PORT || 8000;
 
 // Per abilitare le chiamate REST (join, create, ecc.) e la gestione della Lobby
 server.run({ port: PORT }, () => {
