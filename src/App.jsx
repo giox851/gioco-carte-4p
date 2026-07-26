@@ -1,329 +1,260 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
+import React, { useState, useEffect } from 'react';
 import { Client } from 'boardgame.io/react';
-import { GiocoCarte } from './Game.js';
+import { SocketIO } from 'boardgame.io/multiplayer';
+import { GiocoCarte } from './Game';
 
-const ORDINE_VALORI = {
-  'A': 13, 'K': 12, 'Q': 11, 'J': 10, '10': 9, '9': 8,
-  '8': 7, '7': 6, '6': 5, '5': 4, '4': 3, '3': 2, '2': 1
-};
+//  server Render
+const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 
-const ORDINE_SEMI = {
-  '♥️': 1, '♦️': 2, '♣️': 3, '♠️': 4
-};
+function TavoloDaGioco({ G, ctx, moves, playerID }) {
+  if (!G || !ctx) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'Arial' }}>
+        <h3>Connessione al server in corso...</h3>
+        <p>Assicurati che il server Node.js sia avviato sulla porta 8000.</p>
+      </div>
+    );
+  }
 
-function ordinaCarte(carte) {
-  return [...carte].map((carta, indexOriginale) => ({ ...carta, indexOriginale })).sort((a, b) => {
-    if (ORDINE_SEMI[a.seme] !== ORDINE_SEMI[b.seme]) {
-      return ORDINE_SEMI[a.seme] - ORDINE_SEMI[b.seme];
+  const eMioTurno = ctx.currentPlayer === playerID;
+  const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
+  const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
+
+  useEffect(() => {
+    const nomeSalvato = localStorage.getItem(`nome_giocatore_${playerID}`);
+    if (nomeSalvato && moves && moves.impostaNome) {
+      moves.impostaNome(nomeSalvato);
     }
-    return ORDINE_VALORI[b.valore] - ORDINE_VALORI[a.valore];
-  });
-}
+  }, [playerID, moves]);
 
-const TavoloDiGioco = ({ G, ctx, moves }) => {
-  const giocatori = ['0', '1', '2', '3'];
-  const dichiarazioni = G?.declarations || {};
-  const carteSulTavolo = G?.tavolo || [];
-
-  const sommaAttuale = Object.values(dichiarazioni).reduce(
-    (acc, val) => acc + Number(val),
-    0
-  );
-
-  const eBriscolaRossa = G?.briscola === '♥️' || G?.briscola === '♦️';
-  const semeIniziale = carteSulTavolo.length > 0 && carteSulTavolo.length < 4 ? carteSulTavolo[0].carta.seme : null;
-
-  return (
-    <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
-      <h2 style={{ textAlign: 'center', margin: '0 0 15px 0' }}>Tavolo di Gioco (4 Giocatori)</h2>
-
-      {/* BANNER PRINCIPALE E BRISCOLA */}
-      <div style={{
-        backgroundColor: '#1b2a4a',
-        color: '#ffffff',
-        padding: '12px 24px',
-        borderRadius: '10px',
-        marginBottom: '15px',
-        display: 'flex',
-        justify: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 4px 10px rgba(0,0,0,0.25)'
-      }}>
-        <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-          🎲 Partita #{G?.roundCorrente || 1} — Mano <span style={{ color: '#4fc3f7', fontSize: '20px' }}>{Math.min(G?.manoCorrente || 1, 13)}</span> di {G?.totaleMani}
+  // Fase di Dichiarazione
+  if (ctx.phase === 'dichiarazione') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.cardInfo}>
+          <h2>Fase di Dichiarazione</h2>
+          <p><strong>Round:</strong> {G.roundCorrente} / 13</p>
+          <p><strong>Briscola di questo round:</strong> <span style={{ fontSize: '24px' }}>{G.briscola}</span></p>
+          <p><strong>Carte in mano:</strong> {laMiaMano.length}</p>
         </div>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          backgroundColor: '#ffffff',
-          padding: '6px 16px',
-          borderRadius: '8px',
-          marginLeft: 'auto',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-        }}>
-          <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1b2a4a', textTransform: 'uppercase' }}>
-            BRISCOLA
-          </span>
-          <span style={{
-            fontSize: '34px',
-            lineHeight: '1',
-            color: eBriscolaRossa ? '#d32f2f' : '#111111',
-            fontWeight: 'bold'
-          }}>
-            {G?.briscola}
-          </span>
-        </div>
-      </div>
-
-      {/* TABELLA GLOBALE: PUNTEGGI, DICHIARAZIONI E PRESE */}
-      <div style={{
-        backgroundColor: '#f5f5f5',
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '10px 15px',
-        marginBottom: '15px'
-      }}>
-        <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', textTransform: 'uppercase', color: '#333' }}>
-          📊 RIEPILOGO PUNTI & MANO CORRENTE:
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-          {giocatori.map((pID) => {
-            const decl = dichiarazioni[pID] !== undefined ? dichiarazioni[pID] : '-';
-            const preseFatte = G?.prese?.[pID] || 0;
-            const puntiTotali = G?.punti?.[pID] || 0;
-            const eTurnoCorrente = ctx.currentPlayer === pID;
-
-            return (
-              <div key={pID} style={{
-                backgroundColor: eTurnoCorrente ? '#e8f5e9' : '#ffffff',
-                border: eTurnoCorrente ? '2px solid #2e7d32' : '1px solid #ccc',
-                borderRadius: '6px',
-                padding: '8px',
-                textAlign: 'center'
-              }}>
-                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>Giocatore {pID}</div>
-                <div style={{ fontSize: '12px', marginTop: '4px', color: '#555' }}>
-                  Dichiarate: <strong>{decl}</strong> | Prese: <strong style={{ color: '#2e7d32' }}>{preseFatte}</strong>
-                </div>
-                <div style={{ fontSize: '13px', marginTop: '4px', borderTop: '1px solid #eee', paddingTop: '4px' }}>
-                  Punti Totali: <strong style={{ color: '#1565c0', fontSize: '15px' }}>{puntiTotali}</strong>
-                </div>
+        <div style={{ margin: '20px 0' }}>
+          <h3>La tua mano:</h3>
+          <div style={styles.manoContainer}>
+            {laMiaMano.map((c, i) => (
+              <div key={i} style={styles.cartaMano}>
+                {c.valore} {c.seme}
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* BARRA DI STATO FASE */}
-      <div style={{
-        background: ctx.phase === 'dichiarazione' ? '#e3f2fd' : '#e8f5e9',
-        padding: '12px 15px',
-        borderRadius: '6px',
-        marginBottom: '15px',
-        textAlign: 'center',
-        border: '1px solid #ccc',
-        fontSize: '15px'
-      }}>
-        {ctx.phase === 'dichiarazione' ? (
-          <div>
-            <strong>FASE DICHIARAZIONE:</strong> Somma mani dichiarate: <strong style={{ fontSize: '17px', color: '#1565c0' }}>{sommaAttuale}</strong>
+        {dichFatta ? (
+          <div style={styles.alertSuccess}>
+            Hai dichiarato <strong>{G.declarations[playerID]}</strong> prese. In attesa degli altri giocatori...
           </div>
         ) : (
-          <div style={{ color: '#2e7d32', fontWeight: 'bold' }}>
-            🎮 FASE GIOCO MANI — Tocca al <u>Giocatore {ctx.currentPlayer}</u>
-            {semeIniziale && <span> (Seme d'uscita obbligatorio: <strong>{semeIniziale}</strong>)</span>}
+          <div style={{ textAlign: 'center', marginTop: '20px' }}>
+            <h3>Quante prese pensi di fare?</h3>
+            <p>{eMioTurno ? 'È il tuo turno di dichiarare!' : `In attesa del Giocatore ${G.nomiGiocatori?.[ctx.currentPlayer] || ctx.currentPlayer}...`}</p>
+            
+            {eMioTurno && (
+              <div style={styles.grigliaPulsanti}>
+                {Array.from({ length: (G.totaleMani || 0) + 1 }, (_, i) => i).map(num => (
+                  <button
+                    key={num}
+                    style={styles.btnDichiarazione}
+                    onClick={() => moves.faiDichiarazione(num)}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
+    );
+  }
 
-      {/* AREA CENTRALE DEL TAVOLO */}
-      <div style={{
-        backgroundColor: '#2e7d32',
-        color: '#ffffff',
-        padding: '15px',
-        borderRadius: '8px',
-        marginBottom: '20px',
-        minHeight: '120px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justify: 'center',
-        boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
-      }}>
-        <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-          🃏 Carte sul tavolo ({carteSulTavolo.length} / 4)
+  // Fase Gioco Mani
+  return (
+    <div style={styles.container}>
+      <div style={styles.header}>
+        <div>
+          <h3>Round {G.roundCorrente} - Mano {G.manoCorrente} / {G.totaleMani}</h3>
+          <p>Briscola: <strong style={{ fontSize: '20px' }}>{G.briscola}</strong></p>
         </div>
+        <div>
+          <p>Mio Nome: <strong>{G.nomiGiocatori?.[playerID] || playerID}</strong> (Posto {playerID})</p>
+          <p style={{ color: eMioTurno ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
+            {eMioTurno ? '👉 È IL TUO TURNO!' : `Turno di: ${G.nomiGiocatori?.[ctx.currentPlayer] || ctx.currentPlayer}`}
+          </p>
+        </div>
+      </div>
 
-        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {carteSulTavolo.length === 0 ? (
-            <span style={{ fontSize: '13px', opacity: 0.8, fontStyle: 'italic' }}>Nessuna carta sul tavolo. Tocca al Giocatore {ctx.currentPlayer}...</span>
+      <div style={styles.tabellaPunti}>
+        <h4>Situazione Giocatori</h4>
+        <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+          {['0', '1', '2', '3'].map(pID => (
+            <div key={pID} style={{ padding: '8px', border: pID === ctx.currentPlayer ? '2px solid #2e7d32' : '1px solid #ccc', borderRadius: '6px' }}>
+              <strong>{G.nomiGiocatori?.[pID] || `Giocatore ${pID}`}</strong>
+              <div>Dichiarato: {G.declarations?.[pID] ?? '-'}</div>
+              <div>Prese Fatte: {G.prese?.[pID] ?? 0}</div>
+              <div>Punti Totali: {G.punti?.[pID] ?? 0}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={styles.tavoloVerde}>
+        <h4>Carte sul Tavolo</h4>
+        <div style={styles.carteSulTavolo}>
+          {!G.tavolo || G.tavolo.length === 0 ? (
+            <p style={{ color: '#aaa' }}>Nessuna carta sul tavolo</p>
           ) : (
-            carteSulTavolo.map((elem, i) => {
-              const eRosso = elem.carta.seme === '♥️' || elem.carta.seme === '♦️';
-              return (
-                <div
-                  key={i}
-                  style={{
-                    backgroundColor: '#ffffff',
-                    color: '#000000',
-                    padding: '8px 14px',
-                    borderRadius: '6px',
-                    textAlign: 'center',
-                    boxShadow: '0 3px 6px rgba(0,0,0,0.3)'
-                  }}
-                >
-                  <div style={{ fontSize: '11px', color: '#666', fontWeight: 'bold' }}>G{elem.player}</div>
-                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: eRosso ? '#d32f2f' : '#111' }}>
-                    {elem.carta.valore}{elem.carta.seme}
-                  </div>
+            G.tavolo.map((item, idx) => (
+              <div key={idx} style={styles.cartaTavolo}>
+                <span style={{ fontSize: '12px', color: '#555' }}>
+                  {G.nomiGiocatori?.[item.player] || item.player}
+                </span>
+                <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
+                  {item.carta.valore} {item.carta.seme}
                 </div>
-              );
-            })
+              </div>
+            ))
           )}
         </div>
-
-        {G.ultimoVincitore !== null && carteSulTavolo.length === 4 && (
-          <div style={{ marginTop: '12px', backgroundColor: '#ffeb3b', color: '#000', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', fontSize: '13px' }}>
-            🏆 Presa vinta dal Giocatore {G.ultimoVincitore}! Tocca a lui iniziare la nuova mano.
-          </div>
-        )}
       </div>
 
-      {/* GRIGLIA 4 GIOCATORI */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-        {giocatori.map((playerID) => {
-          const miaManoGrezza = G?.hands?.[playerID] || [];
-          const miaManoOrdinata = ordinaCarte(miaManoGrezza);
-
-          const eIlMioTurno = ctx.currentPlayer === playerID;
-          const haSemeIniziale = semeIniziale ? miaManoGrezza.some((c) => c.seme === semeIniziale) : false;
-
-          return (
-            <div
-              key={playerID}
+      <div style={{ marginTop: '20px' }}>
+        <h3>Le tue Carte ({laMiaMano.length}):</h3>
+        <div style={styles.manoContainer}>
+          {laMiaMano.map((carta, index) => (
+            <button
+              key={index}
+              disabled={!eMioTurno}
               style={{
-                padding: '15px',
-                border: eIlMioTurno ? '3px solid #2e7d32' : '1px solid #ccc',
-                borderRadius: '8px',
-                backgroundColor: eIlMioTurno ? '#f1f8e9' : '#ffffff',
+                ...styles.cartaInteractive,
+                opacity: eMioTurno ? 1 : 0.6,
+                cursor: eMioTurno ? 'pointer' : 'not-allowed'
               }}
+              onClick={() => eMioTurno && moves.giocaCarta(index)}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0 }}>Giocatore {playerID}</h3>
-                <span style={{ fontSize: '12px', backgroundColor: '#e3f2fd', border: '1px solid #90caf9', padding: '3px 8px', borderRadius: '12px', color: '#1565c0', fontWeight: 'bold' }}>
-                  Punti: {G?.punti?.[playerID] || 0}
-                </span>
-              </div>
-
-              <p style={{ margin: '8px 0', fontSize: '13px' }}>
-                <strong>Status:</strong> {eIlMioTurno ? '👉 TOCCA A TE!' : `In attesa del Giocatore ${ctx.currentPlayer}`}
-              </p>
-
-              {/* SEZIONE DICHIARAZIONE */}
-              {eIlMioTurno && ctx.phase === 'dichiarazione' && dichiarazioni[playerID] === undefined && (
-                <div style={{
-                  marginBottom: '10px',
-                  padding: '10px',
-                  background: '#fffde7',
-                  borderRadius: '6px',
-                  border: '1px solid #fff59d'
-                }}>
-                  <label style={{ fontSize: '12px', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                    Scegli la tua dichiarazione:
-                  </label>
-
-                  {(() => {
-                    const carteInMano = miaManoGrezza.length;
-                    const valoreVietato = 13 - sommaAttuale;
-
-                    const opzioniValide = [];
-                    for (let i = 0; i <= carteInMano; i++) {
-                      if (i !== valoreVietato) {
-                        opzioniValide.push(i);
-                      }
-                    }
-
-                    return (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                        {opzioniValide.map((val) => (
-                          <button
-                            key={val}
-                            onClick={() => moves.faiDichiarazione(val)}
-                            style={{
-                              padding: '6px 10px',
-                              fontSize: '13px',
-                              fontWeight: 'bold',
-                              backgroundColor: '#2e7d32',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {val}
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* FASE GIOCO MANI CON CARTE ORDINATE */}
-              <div style={{ marginTop: '12px' }}>
-                <h4 style={{ margin: '5px 0', fontSize: '13px' }}>Carte in mano ({miaManoGrezza.length}):</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {miaManoOrdinata.map((carta) => {
-                    const etichetta = `${carta.valore}${carta.seme}`;
-
-                    const eCartaSemeIniziale = carta.seme === semeIniziale;
-                    const eMossaLegale = !semeIniziale || !haSemeIniziale || eCartaSemeIniziale;
-                    const disabilitato = !eIlMioTurno || ctx.phase !== 'giocoMani' || !eMossaLegale;
-
-                    const eRosso = carta.seme === '♥️' || carta.seme === '♦️';
-
-                    return (
-                      <button
-                        key={`${carta.seme}-${carta.valore}-${carta.indexOriginale}`}
-                        disabled={disabilitato}
-                        onClick={() => moves.giocaCarta(carta.indexOriginale)}
-                        style={{
-                          padding: '6px 8px',
-                          fontSize: '13px',
-                          fontWeight: 'bold',
-                          color: eRosso ? '#d32f2f' : '#111',
-                          backgroundColor: disabilitato ? '#e0e0e0' : '#fff',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                          cursor: disabilitato ? 'not-allowed' : 'pointer',
-                          opacity: disabilitato ? 0.5 : 1
-                        }}
-                      >
-                        {etichetta}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+              <div style={{ fontSize: '22px' }}>{carta.valore}</div>
+              <div style={{ fontSize: '26px' }}>{carta.seme}</div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
-};
+}
 
-export const App = Client({
+const GiocoClient = Client({
   game: GiocoCarte,
-  board: TavoloDiGioco,
-  numPlayers: 4,
+  board: TavoloDaGioco,
+  multiplayer: SocketIO({ server: SERVER_URL }),
+  debug: false,
 });
 
-const targetEl = document.getElementById('root') || document.getElementById('app');
-if (targetEl) {
-  const root = createRoot(targetEl);
-  root.render(<App />);
+export default function App() {
+  const [nome, setNome] = useState('Giox');
+  const [matchID, setMatchID] = useState('tavolo-1');
+  const [playerID, setPlayerID] = useState('0');
+  const [inPartita, setInPartita] = useState(false);
+
+  const gestisciEntrata = (e) => {
+    e.preventDefault();
+    if (!nome.trim()) {
+      alert('Inserisci il tuo nome!');
+      return;
+    }
+    if (playerID === '') {
+      alert('Seleziona un posto!');
+      return;
+    }
+
+    localStorage.setItem(`nome_giocatore_${playerID}`, nome.trim());
+    setInPartita(true);
+  };
+
+  if (!inPartita) {
+    return (
+      <div style={styles.loginContainer}>
+        <h2>Entra al Tavolo da Gioco</h2>
+        <form onSubmit={gestisciEntrata} style={styles.formLogin}>
+          <div style={{ marginBottom: '15px' }}>
+            <label>Il tuo Nome:</label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Inserisci il tuo nome"
+              style={styles.input}
+              required
+            />
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label>Codice Stanza:</label>
+            <input
+              type="text"
+              value={matchID}
+              onChange={(e) => setMatchID(e.target.value)}
+              style={styles.input}
+              required
+            />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label>Scegli il tuo Posto:</label>
+            <select
+              value={playerID}
+              onChange={(e) => setPlayerID(e.target.value)}
+              style={styles.input}
+              required
+            >
+              <option value="0">Posto 0 (Giocatore 1)</option>
+              <option value="1">Posto 1 (Giocatore 2)</option>
+              <option value="2">Posto 2 (Giocatore 3)</option>
+              <option value="3">Posto 3 (Giocatore 4)</option>
+            </select>
+          </div>
+
+          <button type="submit" style={styles.btnSubmit}>
+            Entra in Partita
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <GiocoClient
+      matchID={matchID}
+      playerID={String(playerID)}
+      credentials={`cred_${playerID}`}
+    />
+  );
 }
+
+const styles = {
+  container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '900px', margin: '0 auto' },
+  loginContainer: { maxWidth: '400px', margin: '100px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px', textAlign: 'center' },
+  formLogin: { display: 'flex', flexDirection: 'column', textAlign: 'left' },
+  input: { width: '100%', padding: '10px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' },
+  btnSubmit: { padding: '12px', backgroundColor: '#2e7d32', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' },
+  header: { display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #ccc', paddingBottom: '10px' },
+  cardInfo: { backgroundColor: '#f5f5f5', padding: '15px', borderRadius: '8px', marginBottom: '15px' },
+  manoContainer: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
+  cartaMano: { padding: '15px 20px', backgroundColor: '#fff', border: '2px solid #333', borderRadius: '6px', fontWeight: 'bold' },
+  cartaInteractive: { padding: '15px 20px', backgroundColor: '#fff', border: '2px solid #2e7d32', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  grigliaPulsanti: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '15px' },
+  btnDichiarazione: { padding: '10px 15px', fontSize: '16px', backgroundColor: '#1976d2', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+  alertSuccess: { backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '15px', borderRadius: '6px', textAlign: 'center', marginTop: '20px' },
+  tabellaPunti: { margin: '20px 0', backgroundColor: '#fafafa', padding: '10px', borderRadius: '8px' },
+  tavoloVerde: { backgroundColor: '#357a38', color: '#fff', padding: '20px', borderRadius: '12px', minHeight: '150px', textAlign: 'center', margin: '20px 0' },
+  carteSulTavolo: { display: 'flex', gap: '15px', justifyContent: 'center', marginTop: '10px' },
+  cartaTavolo: { backgroundColor: '#fff', color: '#000', padding: '10px 15px', borderRadius: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)' }
+};
