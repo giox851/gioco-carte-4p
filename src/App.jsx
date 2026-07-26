@@ -8,7 +8,6 @@ const SERVER_URL = 'https://gioco-carte-4p.onrender.com';
 function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
   const nomeGiocatore = localStorage.getItem('playerName') || `Giocatore ${Number(playerID) + 1}`;
 
-  // Registra il nome del giocatore nello stato del server al primo caricamento
   useEffect(() => {
     if (moves && moves.registraGiocatore) {
       moves.registraGiocatore({ playerID, name: nomeGiocatore });
@@ -27,7 +26,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
 
-  // Recupera i nomi reali salvati nello stato del gioco G (se presenti)
   const getNomePosto = (id) => {
     if (G.nomiGiocatori && G.nomiGiocatori[id]) {
       return G.nomiGiocatori[id];
@@ -38,7 +36,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
   if (ctx.phase === 'dichiarazione') {
     return (
       <div style={styles.container}>
-        {/* Intestazione con Nome Tavolo */}
         <div style={styles.topBar}>
           <h2>Tavolo: <span style={{ color: '#1976d2' }}>{matchID}</span></h2>
           <p>Sei collegato come: <strong>{nomeGiocatore}</strong> (Posto {Number(playerID) + 1})</p>
@@ -91,7 +88,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
 
   return (
     <div style={styles.container}>
-      {/* Intestazione con Nome Tavolo */}
       <div style={styles.topBar}>
         <h2>Tavolo: <span style={{ color: '#1976d2' }}>{matchID}</span></h2>
         <p>Giocatore: <strong>{nomeGiocatore}</strong> (Posto {Number(playerID) + 1})</p>
@@ -156,7 +152,6 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
 export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
-  const [playerID, setPlayerID] = useState('0');
   const [session, setSession] = useState(null);
 
   const gestisciIngresso = (e) => {
@@ -165,9 +160,18 @@ export default function App() {
 
     localStorage.setItem('playerName', nome.trim());
 
+    const key = `seat_${matchID.trim()}_${nome.trim()}`;
+    let savedSeat = localStorage.getItem(key);
+
+    if (!savedSeat) {
+      const existingSeats = Object.keys(localStorage).filter(k => k.startsWith(`seat_${matchID.trim()}_`));
+      savedSeat = String(existingSeats.length % 4);
+      localStorage.setItem(key, savedSeat);
+    }
+
     setSession({
       matchID: matchID.trim(),
-      playerID: playerID
+      playerID: savedSeat
     });
   };
 
@@ -189,7 +193,7 @@ export default function App() {
             />
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
+          <div style={{ marginBottom: '20px' }}>
             <label>Codice Stanza / Nome Tavolo:</label>
             <input
               type="text"
@@ -198,20 +202,6 @@ export default function App() {
               style={styles.input}
               required
             />
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label>Scegli la tua Posizione al Tavolo:</label>
-            <select
-              value={playerID}
-              onChange={(e) => setPlayerID(e.target.value)}
-              style={styles.input}
-            >
-              <option value="0">Posto 1 (Giocatore 1)</option>
-              <option value="1">Posto 2 (Giocatore 2)</option>
-              <option value="2">Posto 3 (Giocatore 3)</option>
-              <option value="3">Posto 4 (Giocatore 4)</option>
-            </select>
           </div>
 
           <button type="submit" style={styles.btnSubmit}>

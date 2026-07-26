@@ -1,4 +1,4 @@
-// Helper per generare e mescolare un mazzo di 40 carte italiane/piacentine
+// Helper per generare e mescolare un mazzo di 40 carte
 function creaMazzo() {
   const semi = ['Bastoni', 'Coppe', 'Denari', 'Spade'];
   const valori = ['1', '2', '3', '4', '5', '6', '7', 'Fante', 'Cavallo', 'Re'];
@@ -19,9 +19,8 @@ function creaMazzo() {
   return mazzo;
 }
 
-// Helper per calcolare la forza di una carta
+// Helper per calcolare la forza della carta
 function calcolaValoreCarta(carta, briscola, semeDiMano) {
-  // Gerarchia valore standard: Re > Cavallo > Fante > 7 > 6 > 5 > 4 > 3 > 2 > 1
   const gerarchia = {
     '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
     '6': 6, '7': 7, 'Fante': 8, 'Cavallo': 9, 'Re': 10
@@ -29,12 +28,9 @@ function calcolaValoreCarta(carta, briscola, semeDiMano) {
 
   let punteggio = gerarchia[carta.valore] || 0;
 
-  // Se è briscola ha un peso dominante
   if (carta.seme === briscola) {
     punteggio += 100;
-  } 
-  // Se rispetta il seme di mano della prima carta giocata
-  else if (carta.seme === semeDiMano) {
+  } else if (carta.seme === semeDiMano) {
     punteggio += 10;
   }
 
@@ -47,7 +43,7 @@ export const GiocoCarte = {
   setup: () => ({
     roundCorrente: 1,
     manoCorrente: 1,
-    totaleMani: 10, // Inizia con 10 carte a testa nel primo round
+    totaleMani: 10,
     briscola: '',
     hands: { 0: [], 1: [], 2: [], 3: [] },
     declarations: {},
@@ -58,7 +54,6 @@ export const GiocoCarte = {
   }),
 
   moves: {
-    // Registra il nome del giocatore nello stato condiviso G
     registraGiocatore: (G, ctx, { playerID, name }) => {
       if (!G.nomiGiocatori) {
         G.nomiGiocatori = {};
@@ -68,22 +63,21 @@ export const GiocoCarte = {
       }
     },
 
-    // Mossa per registrare la dichiarazione (scommessa) sulle prese
     faiDichiarazione: (G, ctx, numeroPrese) => {
+      if (!G.declarations) G.declarations = {};
       G.declarations[ctx.currentPlayer] = numeroPrese;
     },
 
-    // Mossa per calare la carta sul tavolo
     giocaCarta: (G, ctx, cartaIndex) => {
       const player = ctx.currentPlayer;
-      const cartaGiocata = G.hands[player][cartaIndex];
+      if (!G.hands || !G.hands[player]) return;
 
+      const cartaGiocata = G.hands[player][cartaIndex];
       if (!cartaGiocata) return;
 
-      // Rimuovi la carta dalla mano del giocatore
       G.hands[player].splice(cartaIndex, 1);
 
-      // Aggiungi la carta al tavolo
+      if (!G.tavolo) G.tavolo = [];
       G.tavolo.push({
         player: player,
         carta: cartaGiocata
@@ -95,26 +89,24 @@ export const GiocoCarte = {
     dichiarazione: {
       start: true,
       onBegin: (G, ctx) => {
-        // Ripristina tavolo e conteggi del round
         G.tavolo = [];
         G.declarations = {};
         G.prese = { 0: 0, 1: 0, 2: 0, 3: 0 };
 
-        // Crea e distribuisce le carte
         const mazzo = creaMazzo();
-        const cartePerGiocatore = Math.min(11 - G.roundCorrente, 10); // Scala ad ogni round
+        const cartePerGiocatore = Math.min(11 - G.roundCorrente, 10);
         G.totaleMani = cartePerGiocatore;
 
         for (let i = 0; i < 4; i++) {
           G.hands[i] = mazzo.splice(0, cartePerGiocatore);
         }
 
-        // Estrai la briscola
         const cartaBriscola = mazzo.pop();
         G.briscola = cartaBriscola ? cartaBriscola.seme : 'Bastoni';
       },
       endIf: (G) => {
-        // La fase termina quando tutti e 4 i giocatori hanno dichiarato
+        // Controllo difensivo per evitare crash se G.declarations non è definito
+        if (!G || !G.declarations) return false;
         return Object.keys(G.declarations).length === 4;
       },
       next: 'gioco',
@@ -125,13 +117,11 @@ export const GiocoCarte = {
         moveLimit: 1,
       },
       onEnd: (G, ctx) => {
-        // Fine della singola mano (quando ci sono 4 carte sul tavolo)
-        if (G.tavolo.length === 4) {
+        if (G.tavolo && G.tavolo.length === 4) {
           const semeDiMano = G.tavolo[0].carta.seme;
           let vincitoreMano = G.tavolo[0].player;
           let punteggioMassimo = -1;
 
-          // Determina il vincitore della presa
           for (const giocata of G.tavolo) {
             const valore = calcolaValoreCarta(giocata.carta, G.briscola, semeDiMano);
             if (valore > punteggioMassimo) {
@@ -140,35 +130,33 @@ export const GiocoCarte = {
             }
           }
 
-          // Assegna la presa al vincitore
+          if (!G.prese) G.prese = { 0: 0, 1: 0, 2: 0, 3: 0 };
           G.prese[vincitoreMano] = (G.prese[vincitoreMano] || 0) + 1;
           G.tavolo = [];
           G.manoCorrente += 1;
         }
       },
       endIf: (G) => {
-        // Il round finisce quando tutte le carte in mano sono state giocate
-        return G.hands[0].length === 0 &&
-               G.hands[1].length === 0 &&
-               G.hands[2].length === 0 &&
-               G.hands[3].length === 0;
+        if (!G || !G.hands) return false;
+        return (G.hands[0]?.length === 0) &&
+               (G.hands[1]?.length === 0) &&
+               (G.hands[2]?.length === 0) &&
+               (G.hands[3]?.length === 0);
       },
       onEndPhase: (G) => {
-        // Calcolo punteggi di fine round
+        if (!G.punteggiTotali) G.punteggiTotali = { 0: 0, 1: 0, 2: 0, 3: 0 };
+
         for (let i = 0; i < 4; i++) {
-          const dichiarate = G.declarations[i] || 0;
-          const fatte = G.prese[i] || 0;
+          const dichiarate = (G.declarations && G.declarations[i]) || 0;
+          const fatte = (G.prese && G.prese[i]) || 0;
 
           if (dichiarate === fatte) {
-            // Punti per aver azzeccato la dichiarazione
             G.punteggiTotali[i] += 10 + fatte;
           } else {
-            // Penalità per errore
             G.punteggiTotali[i] -= Math.abs(dichiarate - fatte);
           }
         }
 
-        // Avanza di round
         G.roundCorrente += 1;
         G.manoCorrente = 1;
       },
