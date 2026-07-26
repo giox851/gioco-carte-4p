@@ -1,5 +1,5 @@
-const { Server, Origins } = require('boardgame.io/server');
-const { GiocoCarte } = require('./src/Game'); // controlla il percorso del file Game
+import { Server, Origins } from 'boardgame.io/server';
+import { GiocoCarte } from './src/Game.js'; // Assicurati di includere l'estensione .js
 
 const server = Server({
   games: [GiocoCarte],
@@ -8,7 +8,7 @@ const server = Server({
     'http://localhost:3000',
     'http://localhost:5173',
     Origins.LOCALHOST,
-    '*' // Permette tutte le origini per evitare blocchi CORS sulle API Lobby
+    '*'
   ],
 });
 
