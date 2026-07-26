@@ -1,5 +1,3 @@
-import { ActivePlayers } from 'boardgame.io/core';
-
 // Helper per generare e mescolare un mazzo di 40 carte
 function creaMazzo() {
   const semi = ['Bastoni', 'Coppe', 'Denari', 'Spade'];
@@ -94,9 +92,9 @@ export const GiocoCarte = {
   phases: {
     dichiarazione: {
       start: true,
-      // Tutti i giocatori sono attivi contemporaneamente durante le dichiarazioni
+      // Usiamo 'ALL' come stringa per evitare import incompatibili con ESM su Node 24
       turn: {
-        activePlayers: ActivePlayers.ALL,
+        activePlayers: 'ALL',
       },
       onBegin: (G, ctx) => {
         G.tavolo = [];
