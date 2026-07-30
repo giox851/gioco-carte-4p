@@ -25,9 +25,14 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
     );
   }
 
-  const eMioTurno = ctx.phase === 'dichiarazione' ? true : ctx.currentPlayer === playerID;
+  // È il mio turno solo se il currentPlayer del gioco corrisponde al mio playerID
+  const eMioTurno = ctx.currentPlayer === playerID;
   const laMiaMano = G.hands ? (G.hands[playerID] || []) : [];
   const dichFatta = G.declarations ? G.declarations[playerID] !== undefined : false;
+
+  // Per la fase di dichiarazione vogliamo che le dichiarazioni partano dal giocatore 1 (playerID '0')
+  const dichiarateCount = G.declarations ? Object.keys(G.declarations).length : 0;
+  const currentDeclarer = String(dichiarateCount % 4);
 
   const getNomePosto = (id) => {
     if (G.nomiGiocatori && G.nomiGiocatori[id]) {
@@ -69,12 +74,18 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <h3>Quante prese pensi di fare?</h3>
 
+            <p>È il turno di: <strong>{getNomePosto(currentDeclarer)}</strong></p>
+
             <div style={styles.grigliaPulsanti}>
               {Array.from({ length: (G.totaleMani || 0) + 1 }, (_, i) => i).map(num => (
                 <button
                   key={num}
                   style={styles.btnDichiarazione}
-                  onClick={() => moves.faiDichiarazione(num)}
+                  disabled={dichFatta || String(playerID) !== currentDeclarer}
+                  onClick={() => {
+                    if (dichFatta || String(playerID) !== currentDeclarer) return;
+                    moves.faiDichiarazione(num);
+                  }}
                 >
                   {num}
                 </button>
@@ -221,13 +232,14 @@ export default function App() {
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label>Scegli il posto (opzionale):</label>
+            <label>Scegli il posto (obbligatorio):</label>
             <select
               value={selectedSeat}
               onChange={(e) => setSelectedSeat(e.target.value)}
               style={styles.input}
+              required
             >
-              <option value="">Assegna automaticamente</option>
+              <option value="" disabled>Seleziona il posto</option>
               <option value="0">Posto 1</option>
               <option value="1">Posto 2</option>
               <option value="2">Posto 3</option>
