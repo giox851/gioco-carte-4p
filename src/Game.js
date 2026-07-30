@@ -54,14 +54,19 @@ export const GiocoCarte = {
   }),
 
   moves: {
-    // Permette di registrare il nome in qualsiasi momento
+    // Permette di registrare il nome in qualsiasi momento.
+    // Riceve solo il "name" come argomento semplice (non un oggetto da
+    // destrutturare): usiamo ctx.playerID, che boardgame.io imposta da solo
+    // in base al client connesso, evitando così il crash quando la mossa
+    // viene invocata senza argomenti (es. durante una ri-sincronizzazione).
     registraGiocatore: {
-      move: (G, ctx, { playerID, name }) => {
+      move: (G, ctx, name) => {
         if (!G.nomiGiocatori) {
           G.nomiGiocatori = {};
         }
-        if (name && name.trim() !== '') {
-          G.nomiGiocatori[playerID] = name.trim();
+        const pid = ctx.playerID;
+        if (name && name.trim() !== '' && pid !== undefined) {
+          G.nomiGiocatori[pid] = name.trim();
         }
       },
       noLimit: true, // Consente l'esecuzione anche se non è il proprio turno

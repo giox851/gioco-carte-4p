@@ -9,8 +9,11 @@ function TavoloDaGioco({ G, ctx, moves, playerID, matchID }) {
   const nomeGiocatore = localStorage.getItem('playerName') || `Giocatore ${Number(playerID) + 1}`;
 
   useEffect(() => {
-    if (moves && moves.registraGiocatore) {
-      moves.registraGiocatore({ playerID, name: nomeGiocatore });
+    // Passiamo solo il nome (stringa semplice): la mossa usa ctx.playerID
+    // internamente, quindi non serve costruire un oggetto da destrutturare
+    // ed evitiamo il crash se la mossa viene invocata senza argomenti.
+    if (moves && moves.registraGiocatore && nomeGiocatore) {
+      moves.registraGiocatore(nomeGiocatore);
     }
   }, [playerID, nomeGiocatore]);
 
