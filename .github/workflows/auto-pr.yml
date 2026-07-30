@@ -1,0 +1,23 @@
+name: Auto Create PR
+
+on:
+  push:
+    # ignore main to avoid loops
+    branches-ignore:
+      - main
+
+jobs:
+  create_pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create or update PR
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          title: "Auto PR: ${{ github.ref_name }}"
+          body: "Auto-generated PR from branch ${{ github.ref_name }} to main."
+          commit-message: "chore: auto pr for ${{ github.ref_name }}"
+          labels: automation

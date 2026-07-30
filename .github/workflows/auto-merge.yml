@@ -1,0 +1,48 @@
+name: Auto Merge PR on successful checks
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attempt merge when checks are successful
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request
+              ? context.payload.pull_request
+              : (await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: context.issue.number }).then(r => r.data));
+            if (!pr) return;
+
+            // Only auto-merge PRs labeled with 'automation'
+            if (!pr.labels || !pr.labels.some(l => l.name === 'automation')) {
+              core.info('PR not labeled automation; skipping auto-merge.');
+              return;
+            }
+
+            // Retry to get a stable `mergeable` state
+            for (let i = 0; i < 6; i++) {
+              const { data: fresh } = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number });
+              if (fresh.mergeable !== null) {
+                if (!fresh.mergeable) {
+                  core.info('PR is not mergeable (mergeable=' + fresh.mergeable + '), skipping.');
+                  return;
+                }
+
+                const { data: combined } = await github.rest.repos.getCombinedStatusForRef({ owner: context.repo.owner, repo: context.repo.repo, ref: fresh.head.sha });
+                if (combined.state === 'success') {
+                  await github.rest.pulls.merge({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number, merge_method: 'merge' });
+                  core.info('Merged PR #' + pr.number);
+                } else {
+                  core.info('Checks not all successful (combined state=' + combined.state + '), skipping.');
+                }
+                return;
+              }
+              // wait a bit and retry
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            core.info('Could not determine mergeable state in time; skipping.');
