@@ -41,18 +41,33 @@ function calcolaValoreCarta(carta, briscola, semeDiMano) {
 export const GiocoCarte = {
   name: 'gioco-carte-4p',
 
-  setup: () => ({
-    roundCorrente: 1,
-    manoCorrente: 1,
-    totaleMani: 13,
-    briscola: '',
-    hands: { 0: [], 1: [], 2: [], 3: [] },
-    declarations: {},
-    prese: { 0: 0, 1: 0, 2: 0, 3: 0 },
-    punteggiTotali: { 0: 0, 1: 0, 2: 0, 3: 0 },
-    tavolo: [],
-    nomiGiocatori: { 0: 'Giocatore 1', 1: 'Giocatore 2', 2: 'Giocatore 3', 3: 'Giocatore 4' },
-  }),
+  setup: (ctx) => {
+    const G = {
+      roundCorrente: 1,
+      manoCorrente: 1,
+      totaleMani: 13,
+      briscola: '',
+      hands: { 0: [], 1: [], 2: [], 3: [] },
+      declarations: {},
+      prese: { 0: 0, 1: 0, 2: 0, 3: 0 },
+      punteggiTotali: { 0: 0, 1: 0, 2: 0, 3: 0 },
+      tavolo: [],
+      nomiGiocatori: { 0: 'Giocatore 1', 1: 'Giocatore 2', 2: 'Giocatore 3', 3: 'Giocatore 4' },
+    };
+
+    // Crea mazzo, mescola e distribuisce 13 carte per giocatore
+    const mazzo = creaMazzo();
+    const cartePerGiocatore = 13;
+    for (let i = 0; i < 4; i++) {
+      G.hands[i] = mazzo.splice(0, cartePerGiocatore);
+    }
+
+    // Sceglie un seme di briscola comune a tutti
+    const suits = ['Cuori', 'Quadri', 'Fiori', 'Picche'];
+    G.briscola = suits[Math.floor(Math.random() * suits.length)];
+
+    return G;
+  },
 
   moves: {
     // Permette di registrare il nome in qualsiasi momento.
@@ -103,21 +118,22 @@ export const GiocoCarte = {
         activePlayers: 'ALL',
       },
       onBegin: (G, ctx) => {
+        // Non riassegnare le mani o la briscola se già presenti (per evitare inconsistenze tra client/server)
         G.tavolo = [];
         G.declarations = {};
         G.prese = { 0: 0, 1: 0, 2: 0, 3: 0 };
-        G.hands = { 0: [], 1: [], 2: [], 3: [] };
 
-        const mazzo = creaMazzo();
-        const cartePerGiocatore = 13;
-        G.totaleMani = cartePerGiocatore;
+        if (!G.hands || [0,1,2,3].some(i => !G.hands[i] || G.hands[i].length === 0)) {
+          const mazzo = creaMazzo();
+          const cartePerGiocatore = 13;
+          G.totaleMani = cartePerGiocatore;
+          for (let i = 0; i < 4; i++) {
+            G.hands[i] = mazzo.splice(0, cartePerGiocatore);
+          }
 
-        for (let i = 0; i < 4; i++) {
-          G.hands[i] = mazzo.splice(0, cartePerGiocatore);
+          const suits = ['Cuori', 'Quadri', 'Fiori', 'Picche'];
+          G.briscola = suits[Math.floor(Math.random() * suits.length)];
         }
-
-        const suits = ['Cuori', 'Quadri', 'Fiori', 'Picche'];
-        G.briscola = suits[Math.floor(Math.random() * suits.length)];
       },
 
       endIf: (G) => {

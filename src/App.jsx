@@ -164,7 +164,8 @@ export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
   const [session, setSession] = useState(null);
-  const [selectedSeat, setSelectedSeat] = useState(''); // '' = assegnazione automatica
+  const [selectedSeat, setSelectedSeat] = useState(''); // '' = non selezionato
+  const projectVersion = 'Ultima versione del progetto: 2026-07-30';
 
   const gestisciIngresso = (e) => {
     e.preventDefault();
@@ -206,6 +207,7 @@ export default function App() {
     return (
       <div style={styles.loginContainer}>
         <h2>Entra al Tavolo da Gioco</h2>
+        <p style={{ color: '#666', marginTop: '6px' }}>{projectVersion}</p>
 
         <form onSubmit={gestisciIngresso} style={styles.formLogin}>
           <div style={{ marginBottom: '15px' }}>
