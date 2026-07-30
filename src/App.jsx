@@ -153,6 +153,7 @@ export default function App() {
   const [nome, setNome] = useState('');
   const [matchID, setMatchID] = useState('tavolo-1');
   const [session, setSession] = useState(null);
+  const [selectedSeat, setSelectedSeat] = useState(''); // '' = assegnazione automatica
 
   const gestisciIngresso = (e) => {
     e.preventDefault();
@@ -163,10 +164,25 @@ export default function App() {
     const key = `seat_${matchID.trim()}_${nome.trim()}`;
     let savedSeat = localStorage.getItem(key);
 
+    // Se non c'è un posto già salvato per questo giocatore
     if (!savedSeat) {
-      const existingSeats = Object.keys(localStorage).filter(k => k.startsWith(`seat_${matchID.trim()}_`));
-      savedSeat = String(existingSeats.length % 4);
-      localStorage.setItem(key, savedSeat);
+      // Troviamo i posti già registrati per questa stanza
+      const existingKeys = Object.keys(localStorage).filter(k => k.startsWith(`seat_${matchID.trim()}_`));
+      const takenSeats = existingKeys.map(k => localStorage.getItem(k));
+
+      if (selectedSeat !== '') {
+        // L'utente ha scelto un posto manuale: verificare conflitto
+        if (takenSeats.includes(String(selectedSeat))) {
+          alert('Il posto scelto è già occupato. Scegli un altro posto o lascia vuoto per assegnazione automatica.');
+          return;
+        }
+        savedSeat = String(selectedSeat);
+        localStorage.setItem(key, savedSeat);
+      } else {
+        // assegnazione automatica come prima
+        savedSeat = String(existingKeys.length % 4);
+        localStorage.setItem(key, savedSeat);
+      }
     }
 
     setSession({
@@ -202,6 +218,21 @@ export default function App() {
               style={styles.input}
               required
             />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label>Scegli il posto (opzionale):</label>
+            <select
+              value={selectedSeat}
+              onChange={(e) => setSelectedSeat(e.target.value)}
+              style={styles.input}
+            >
+              <option value="">Assegna automaticamente</option>
+              <option value="0">Posto 1</option>
+              <option value="1">Posto 2</option>
+              <option value="2">Posto 3</option>
+              <option value="3">Posto 4</option>
+            </select>
           </div>
 
           <button type="submit" style={styles.btnSubmit}>
