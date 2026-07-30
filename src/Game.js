@@ -1,7 +1,7 @@
-// Helper per generare e mescolare un mazzo di 40 carte
+// Helper per generare e mescolare un mazzo di 52 carte francesi
 function creaMazzo() {
-  const semi = ['Bastoni', 'Coppe', 'Denari', 'Spade'];
-  const valori = ['1', '2', '3', '4', '5', '6', '7', 'Fante', 'Cavallo', 'Re'];
+  const semi = ['Cuori', 'Quadri', 'Fiori', 'Picche'];
+  const valori = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
   const mazzo = [];
 
   for (const seme of semi) {
@@ -10,7 +10,7 @@ function creaMazzo() {
     }
   }
 
-  // Shuffle (Algoritmo Fisher-Yates)
+  // Shuffle (Fisher-Yates)
   for (let i = mazzo.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [mazzo[i], mazzo[j]] = [mazzo[j], mazzo[i]];
@@ -22,8 +22,9 @@ function creaMazzo() {
 // Helper per calcolare la forza della carta
 function calcolaValoreCarta(carta, briscola, semeDiMano) {
   const gerarchia = {
-    '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
-    '6': 6, '7': 7, 'Fante': 8, 'Cavallo': 9, 'Re': 10
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6,
+    '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11,
+    'Q': 12, 'K': 13, 'A': 14
   };
 
   let punteggio = gerarchia[carta.valore] || 0;
@@ -43,7 +44,7 @@ export const GiocoCarte = {
   setup: () => ({
     roundCorrente: 1,
     manoCorrente: 1,
-    totaleMani: 10,
+    totaleMani: 13,
     briscola: '',
     hands: { 0: [], 1: [], 2: [], 3: [] },
     declarations: {},
@@ -108,16 +109,17 @@ export const GiocoCarte = {
         G.hands = { 0: [], 1: [], 2: [], 3: [] };
 
         const mazzo = creaMazzo();
-        const cartePerGiocatore = Math.min(11 - (G.roundCorrente || 1), 10);
+        const cartePerGiocatore = 13;
         G.totaleMani = cartePerGiocatore;
 
         for (let i = 0; i < 4; i++) {
           G.hands[i] = mazzo.splice(0, cartePerGiocatore);
         }
 
-        const cartaBriscola = mazzo.pop();
-        G.briscola = cartaBriscola ? cartaBriscola.seme : 'Bastoni';
+        const suits = ['Cuori', 'Quadri', 'Fiori', 'Picche'];
+        G.briscola = suits[Math.floor(Math.random() * suits.length)];
       },
+
       endIf: (G) => {
         if (!G || !G.declarations) return false;
         return Object.keys(G.declarations).length === 4;
